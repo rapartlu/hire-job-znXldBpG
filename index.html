@@ -10,10 +10,12 @@
     canvas { display: block; width: 100%; height: 100%; }
     #hud {
       position: fixed; top: 14px; left: 14px;
-      color: #0f0; font: bold 13px/2 monospace;
-      text-shadow: 0 0 6px #003300;
+      color: #0f0; font: bold 14px/2.2 monospace;
+      text-shadow: 0 0 8px #003300;
       pointer-events: none;
     }
+    #hud .warn { color: #ff4; animation: blink 0.6s step-end infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
     #controls {
       position: fixed; bottom: 36px; right: 14px;
       color: rgba(255,255,255,0.75); font: 12px/1.8 monospace;
@@ -33,7 +35,8 @@
     <div>ALT <span id="alt">0</span> m</div>
     <div>SPD <span id="spd">0</span> m/s</div>
     <div>HDG <span id="hdg">000</span>&deg;</div>
-    <div>THR <span id="thr">60</span>%</div>
+    <div>THR <span id="thr">55</span>%</div>
+    <div id="stallWarn" class="warn" style="display:none">⚠ STALL</div>
   </div>
   <div id="controls">
     &uarr; &darr; &nbsp; Pitch<br>
@@ -77,44 +80,59 @@ function mkProg(vsSrc, fsSrc) {
 
 // ── Shader sources ─────────────────────────────────────────────────────────
 
-// Ground: procedural checkerboard from world-space position
+// Ground: procedural checkerboard from world-space position, with simple fog
 const GROUND_VS = `
   attribute vec3 aPos;
   uniform mat4 uMVP;
+  uniform vec3 uCamPos;
   varying vec3 vWP;
+  varying float vDist;
   void main() {
     gl_Position = uMVP * vec4(aPos, 1.0);
     vWP = aPos;
+    vDist = distance(aPos, uCamPos);
   }`;
 const GROUND_FS = `
   precision mediump float;
   varying vec3 vWP;
+  varying float vDist;
   void main() {
     float c = mod(floor(vWP.x / 60.0) + floor(vWP.z / 60.0), 2.0);
     vec3 col = c < 1.0 ? vec3(0.20, 0.50, 0.20) : vec3(0.28, 0.60, 0.28);
+    float fog = exp(-vDist * 0.000025);
+    col = mix(vec3(0.44, 0.67, 0.94), col, clamp(fog, 0.0, 1.0));
     gl_FragColor = vec4(col, 1.0);
   }`;
 
-// Plane: per-vertex colour
+// Per-vertex colour (plane + runway), also with fog
 const PLANE_VS = `
   attribute vec3 aPos;
   attribute vec3 aCol;
   uniform mat4 uMVP;
+  uniform mat4 uModel;
+  uniform vec3 uCamPos;
   varying vec3 vCol;
+  varying float vDist;
   void main() {
+    vec4 worldPos = uModel * vec4(aPos, 1.0);
     gl_Position = uMVP * vec4(aPos, 1.0);
     vCol = aCol;
+    vDist = distance(worldPos.xyz, uCamPos);
   }`;
 const PLANE_FS = `
   precision mediump float;
   varying vec3 vCol;
-  void main() { gl_FragColor = vec4(vCol, 1.0); }`;
+  varying float vDist;
+  void main() {
+    float fog = exp(-vDist * 0.000025);
+    vec3 col = mix(vec3(0.44, 0.67, 0.94), vCol, clamp(fog, 0.0, 1.0));
+    gl_FragColor = vec4(col, 1.0);
+  }`;
 
 const groundProg = mkProg(GROUND_VS, GROUND_FS);
 const planeProg  = mkProg(PLANE_VS,  PLANE_FS);
 
 // ── Ground buffer ──────────────────────────────────────────────────────────
-// One huge quad; checkerboard computed in fragment shader.
 const groundBuf = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, groundBuf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
@@ -122,24 +140,68 @@ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
   -30000, 0, -30000,   30000, 0,  30000,  -30000, 0,  30000,
 ]), gl.STATIC_DRAW);
 
+// ── Runway buffer ──────────────────────────────────────────────────────────
+// Asphalt strip centred on origin, extending along +Z.
+// 45 m wide, 2.8 km long. Starts 200m behind origin, ends 2600m ahead.
+// Includes painted centreline dashes and threshold markings.
+(function buildRunway() {
+  const verts = [];
+  const RW = 22.5;   // half-width
+  const ZN = -200;   // near end
+  const ZF = 2600;   // far end
+  const YR = 0.08;   // just above ground (avoid z-fighting)
+
+  function quad(x0, y0, z0, x1, y1, z1, r, g, b) {
+    // two triangles for axis-aligned horizontal quad (x0→x1, z0→z1)
+    verts.push(
+      x0, y0, z0, r, g, b,
+      x1, y0, z0, r, g, b,
+      x1, y1, z1, r, g, b,
+      x0, y0, z0, r, g, b,
+      x1, y1, z1, r, g, b,
+      x0, y1, z1, r, g, b
+    );
+  }
+
+  // Main asphalt surface
+  quad(-RW, YR, ZN, RW, YR, ZF, 0.22, 0.22, 0.24);
+
+  // Threshold markings (white lines across runway at each end)
+  const threshW = 2.5, threshGap = 3.5;
+  for (let i = 0; i < 6; i++) {
+    const xOff = -RW + 2 + i * (threshW + threshGap);
+    quad(xOff, YR + 0.05, ZN,     xOff + threshW, YR + 0.05, ZN + 30, 0.9, 0.9, 0.9);
+    quad(xOff, YR + 0.05, ZF - 30, xOff + threshW, YR + 0.05, ZF,     0.9, 0.9, 0.9);
+  }
+
+  // Centreline dashes (every 80m, each 50m long)
+  const dashW = 0.6;
+  for (let z = 0; z < ZF - 50; z += 80) {
+    quad(-dashW, YR + 0.05, z, dashW, YR + 0.05, z + 50, 0.88, 0.88, 0.88);
+  }
+
+  const runwayBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, runwayBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+  window._runwayBuf = runwayBuf;
+  window._runwayVertCount = verts.length / 6;
+})();
+
 // ── Plane geometry ─────────────────────────────────────────────────────────
 // Convention: nose = +Z, up = +Y, right = +X (all in local space).
 
 function addBox(arr, x0, y0, z0, x1, y1, z1, r, g, b) {
-  // 6 faces × 2 triangles × 3 vertices = 36 vertices per box.
   const faces = [
-    [x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y0,z1, x1,y1,z1, x0,y1,z1], // +Z face
-    [x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y0,z0, x0,y1,z0, x1,y1,z0], // -Z face
-    [x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y0,z0, x0,y1,z1, x0,y1,z0], // -X face
-    [x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y0,z1, x1,y1,z0, x1,y1,z1], // +X face
-    [x0,y1,z1, x1,y1,z1, x1,y1,z0, x0,y1,z1, x1,y1,z0, x0,y1,z0], // +Y face
-    [x0,y0,z0, x1,y0,z0, x1,y0,z1, x0,y0,z0, x1,y0,z1, x0,y0,z1], // -Y face
+    [x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y0,z1, x1,y1,z1, x0,y1,z1],
+    [x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y0,z0, x0,y1,z0, x1,y1,z0],
+    [x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y0,z0, x0,y1,z1, x0,y1,z0],
+    [x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y0,z1, x1,y1,z0, x1,y1,z1],
+    [x0,y1,z1, x1,y1,z1, x1,y1,z0, x0,y1,z1, x1,y1,z0, x0,y1,z0],
+    [x0,y0,z0, x1,y0,z0, x1,y0,z1, x0,y0,z0, x1,y0,z1, x0,y0,z1],
   ];
-  for (const face of faces) {
-    for (let i = 0; i < face.length; i += 3) {
+  for (const face of faces)
+    for (let i = 0; i < face.length; i += 3)
       arr.push(face[i], face[i+1], face[i+2], r, g, b);
-    }
-  }
 }
 
 const planeVerts = [];
@@ -178,7 +240,7 @@ function resize() {
   canvas.width  = canvas.clientWidth;
   canvas.height = canvas.clientHeight;
   gl.viewport(0, 0, canvas.width, canvas.height);
-  mat4.perspective(proj, Math.PI / 3, canvas.width / canvas.height, 0.5, 100000);
+  mat4.perspective(proj, Math.PI / 3, canvas.width / canvas.height, 0.5, 120000);
 }
 window.addEventListener('resize', resize);
 resize();
@@ -186,11 +248,11 @@ resize();
 // ── Physics ────────────────────────────────────────────────────────────────
 
 const MAX_SPEED  = 220;   // m/s at full throttle
-const MIN_GLIDE  = 25;    // m/s (stall speed; below this plane sinks fast)
+const MIN_GLIDE  = 25;    // m/s (stall speed)
 const PITCH_RATE = 1.1;   // rad/s
 const ROLL_RATE  = 1.4;
 const YAW_RATE   = 0.7;
-const GRAVITY    = 5.0;   // m/s² (gentler than real, keeps it fun)
+const GRAVITY    = 5.0;   // m/s²
 
 function update(dt) {
   // Throttle
@@ -202,12 +264,14 @@ function update(dt) {
   state.speed  = state.speed + (target - state.speed) * Math.min(1, 1.2 * dt);
 
   // Rotations — all in the plane's local (body) frame
-  if (keys['ArrowUp'])   quat.rotateX(state.q, state.q,  PITCH_RATE * dt);  // pitch up
-  if (keys['ArrowDown']) quat.rotateX(state.q, state.q, -PITCH_RATE * dt);  // pitch down
-  if (keys['ArrowLeft']) quat.rotateZ(state.q, state.q,  ROLL_RATE  * dt);  // roll left
-  if (keys['ArrowRight'])quat.rotateZ(state.q, state.q, -ROLL_RATE  * dt);  // roll right
-  if (keys['q'] || keys['Q']) quat.rotateY(state.q, state.q,  YAW_RATE * dt); // yaw left
-  if (keys['e'] || keys['E']) quat.rotateY(state.q, state.q, -YAW_RATE * dt); // yaw right
+  // Pitch: +X rotation → nose rotates toward -Y → pitch down; corrected sign
+  if (keys['ArrowUp'])    quat.rotateX(state.q, state.q, -PITCH_RATE * dt);  // pitch up
+  if (keys['ArrowDown'])  quat.rotateX(state.q, state.q,  PITCH_RATE * dt);  // pitch down
+  if (keys['ArrowLeft'])  quat.rotateZ(state.q, state.q,  ROLL_RATE  * dt);  // roll left
+  if (keys['ArrowRight']) quat.rotateZ(state.q, state.q, -ROLL_RATE  * dt);  // roll right
+  // Yaw: +Y rotation → nose rotates toward +X → yaw right; negate for yaw left
+  if (keys['q'] || keys['Q']) quat.rotateY(state.q, state.q, -YAW_RATE * dt); // yaw left
+  if (keys['e'] || keys['E']) quat.rotateY(state.q, state.q,  YAW_RATE * dt); // yaw right
 
   quat.normalize(state.q, state.q);
 
@@ -229,52 +293,63 @@ function update(dt) {
 
 // ── Render ─────────────────────────────────────────────────────────────────
 
-function render() {
-  gl.clearColor(0.44, 0.67, 0.94, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.DEPTH_TEST);
-
-  // Camera: positioned behind and above the plane in its local frame
-  const camOff = vec3.transformQuat(vec3.create(), [0, 5, -16], state.q);
-  const camPos  = vec3.add(vec3.create(), state.pos, camOff);
-  // Look a little ahead of centre mass
-  const ahead   = vec3.transformQuat(vec3.create(), [0, 0, 3], state.q);
-  const lookTgt = vec3.add(vec3.create(), state.pos, ahead);
-  mat4.lookAt(view, camPos, lookTgt, [0, 1, 0]);
-
-  // ── Ground ──
-  gl.useProgram(groundProg);
-  mat4.multiply(mvp, proj, view);  // model = identity (ground stays put)
-  gl.uniformMatrix4fv(gl.getUniformLocation(groundProg, 'uMVP'), false, mvp);
-  gl.bindBuffer(gl.ARRAY_BUFFER, groundBuf);
-  const gPosLoc = gl.getAttribLocation(groundProg, 'aPos');
-  gl.enableVertexAttribArray(gPosLoc);
-  gl.vertexAttribPointer(gPosLoc, 3, gl.FLOAT, false, 12, 0);
-  gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-  // ── Plane ──
-  gl.useProgram(planeProg);
-  mat4.fromRotationTranslation(modelM, state.q, state.pos);
-  mat4.scale(modelM, modelM, [2.2, 2.2, 2.2]);  // scale up for visibility
-  mat4.multiply(mvp, proj, view);
-  mat4.multiply(mvp, mvp, modelM);
-  gl.uniformMatrix4fv(gl.getUniformLocation(planeProg, 'uMVP'), false, mvp);
-  gl.bindBuffer(gl.ARRAY_BUFFER, planeBuf);
+function drawWithPlaneProg(buf, vertCount, mvpMat, modelMat, camPos) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   const pPosLoc = gl.getAttribLocation(planeProg, 'aPos');
   const pColLoc = gl.getAttribLocation(planeProg, 'aCol');
   gl.enableVertexAttribArray(pPosLoc);
   gl.enableVertexAttribArray(pColLoc);
   gl.vertexAttribPointer(pPosLoc, 3, gl.FLOAT, false, 24,  0);
   gl.vertexAttribPointer(pColLoc, 3, gl.FLOAT, false, 24, 12);
-  gl.drawArrays(gl.TRIANGLES, 0, planeVertCount);
+  gl.uniformMatrix4fv(gl.getUniformLocation(planeProg, 'uMVP'),   false, mvpMat);
+  gl.uniformMatrix4fv(gl.getUniformLocation(planeProg, 'uModel'), false, modelMat);
+  gl.uniform3fv(gl.getUniformLocation(planeProg, 'uCamPos'), camPos);
+  gl.drawArrays(gl.TRIANGLES, 0, vertCount);
+}
+
+function render() {
+  gl.clearColor(0.44, 0.67, 0.94, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+
+  // Camera: behind and above the plane in its local frame
+  const camOff = vec3.transformQuat(vec3.create(), [0, 5, -16], state.q);
+  const camPos  = vec3.add(vec3.create(), state.pos, camOff);
+  const ahead   = vec3.transformQuat(vec3.create(), [0, 0, 3], state.q);
+  const lookTgt = vec3.add(vec3.create(), state.pos, ahead);
+  mat4.lookAt(view, camPos, lookTgt, [0, 1, 0]);
+
+  const viewProj = mat4.multiply(mat4.create(), proj, view);
+  const identity = mat4.create();
+
+  // ── Ground ──
+  gl.useProgram(groundProg);
+  gl.uniformMatrix4fv(gl.getUniformLocation(groundProg, 'uMVP'),    false, viewProj);
+  gl.uniform3fv(gl.getUniformLocation(groundProg, 'uCamPos'), camPos);
+  gl.bindBuffer(gl.ARRAY_BUFFER, groundBuf);
+  const gPosLoc = gl.getAttribLocation(groundProg, 'aPos');
+  gl.enableVertexAttribArray(gPosLoc);
+  gl.vertexAttribPointer(gPosLoc, 3, gl.FLOAT, false, 12, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+  // ── Runway ──
+  gl.useProgram(planeProg);
+  drawWithPlaneProg(window._runwayBuf, window._runwayVertCount, viewProj, identity, camPos);
+
+  // ── Plane ──
+  mat4.fromRotationTranslation(modelM, state.q, state.pos);
+  mat4.scale(modelM, modelM, [2.2, 2.2, 2.2]);
+  const planeMVP = mat4.multiply(mat4.create(), viewProj, modelM);
+  drawWithPlaneProg(planeBuf, planeVertCount, planeMVP, modelM, camPos);
 }
 
 // ── HUD ────────────────────────────────────────────────────────────────────
 
-const altEl = document.getElementById('alt');
-const spdEl = document.getElementById('spd');
-const hdgEl = document.getElementById('hdg');
-const thrEl = document.getElementById('thr');
+const altEl      = document.getElementById('alt');
+const spdEl      = document.getElementById('spd');
+const hdgEl      = document.getElementById('hdg');
+const thrEl      = document.getElementById('thr');
+const stallWarn  = document.getElementById('stallWarn');
 
 function updateHUD() {
   altEl.textContent = Math.max(0, Math.round(state.pos[1]));
@@ -283,6 +358,7 @@ function updateHUD() {
   const hdg = ((Math.atan2(fwd[0], fwd[2]) * 180 / Math.PI) + 360) % 360;
   hdgEl.textContent = String(Math.round(hdg)).padStart(3, '0');
   thrEl.textContent = Math.round(state.throttle * 100);
+  stallWarn.style.display = state.speed < 35 ? 'block' : 'none';
 }
 
 // ── Main loop ──────────────────────────────────────────────────────────────
