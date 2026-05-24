@@ -137,7 +137,7 @@ const GROUND_VS = `
     vDistCamSq = d.x*d.x + d.z*d.z;
   }`;
 const GROUND_FS = `
-  precision mediump float;
+  precision highp float;
   varying vec3 vWP;
   varying float vDistCamSq;
   uniform float uFog;
@@ -352,7 +352,7 @@ resize();
 
 // ── Physics ────────────────────────────────────────────────────────────────
 const MAX_SPEED  = 220;
-const MIN_GLIDE  = 25;
+const MIN_GLIDE  = 12;  // stall speed — below this the plane sinks fast
 const PITCH_RATE = 1.1;
 const ROLL_RATE  = 1.4;
 const YAW_RATE   = 0.7;
@@ -372,19 +372,20 @@ function update(dt) {
   if (keys['ArrowDown']) quat.rotateX(state.q, state.q, -PITCH_RATE * dt);
 
   // Coordinated turn: arrow Left/Right rolls AND yaws — pressing left actually turns left.
-  // (Pure-roll-only feels broken to anyone who hasn't flown a real aircraft.)
+  // Yaw sign: rotateY(+δ) rotates +Z (forward) toward +X (right), so +rotateY = yaw RIGHT.
+  // For turn-LEFT we need negative rotateY.
   if (keys['ArrowLeft']) {
-    quat.rotateZ(state.q, state.q,  ROLL_RATE * dt);
-    quat.rotateY(state.q, state.q,  YAW_RATE  * 0.9 * dt);  // turn left
+    quat.rotateZ(state.q, state.q,  ROLL_RATE * dt);   // roll left (right wing up)
+    quat.rotateY(state.q, state.q, -YAW_RATE * 0.9 * dt);  // turn left (heading decreases)
   }
   if (keys['ArrowRight']) {
-    quat.rotateZ(state.q, state.q, -ROLL_RATE * dt);
-    quat.rotateY(state.q, state.q, -YAW_RATE  * 0.9 * dt);  // turn right
+    quat.rotateZ(state.q, state.q, -ROLL_RATE * dt);   // roll right (left wing up)
+    quat.rotateY(state.q, state.q,  YAW_RATE * 0.9 * dt);  // turn right (heading increases)
   }
 
   // Pure yaw (rudder) — Q/E. Useful for fine corrections.
-  if (keys['q'] || keys['Q']) quat.rotateY(state.q, state.q,  YAW_RATE * dt);
-  if (keys['e'] || keys['E']) quat.rotateY(state.q, state.q, -YAW_RATE * dt);
+  if (keys['q'] || keys['Q']) quat.rotateY(state.q, state.q, -YAW_RATE * dt);  // yaw left
+  if (keys['e'] || keys['E']) quat.rotateY(state.q, state.q,  YAW_RATE * dt);  // yaw right
 
   quat.normalize(state.q, state.q);
 
@@ -402,8 +403,14 @@ function update(dt) {
   }
 
   // Gravity reduced by speed (more speed = more lift)
-  const liftFactor = Math.min(1, state.speed / 80);
-  state.pos[1] -= GRAVITY * (1 - liftFactor * 0.8) * dt;
+  // Lift model: requires both forward speed AND throttle.
+  // - At full throttle + cruising speed: nearly level flight (~0.5 m/s sink)
+  // - At zero throttle + low speed: sinks at full gravity (~5 m/s)
+  // - Throttle controls lift roughly linearly so dropping throttle = real descent
+  const speedLift = Math.min(1, state.speed / 80);
+  const throttleLift = Math.min(1, state.throttle * 1.4);  // throttle counts for most of lift
+  const liftFactor = Math.min(1, speedLift * 0.4 + throttleLift * 0.6);
+  state.pos[1] -= GRAVITY * (1 - liftFactor * 0.9) * dt;
 
   // Soft ground collision — settle on runway if you touch down softly enough
   if (state.pos[1] < 4) {
