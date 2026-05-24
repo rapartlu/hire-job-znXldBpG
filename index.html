@@ -4,43 +4,90 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flight Sim</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E%E2%9C%88%EF%B8%8F%3C/text%3E%3C/svg%3E">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #4a7ab5; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #4a7ab5; font-family: -apple-system, system-ui, sans-serif; }
     canvas { display: block; width: 100%; height: 100%; }
     #hud {
       position: fixed; top: 14px; left: 14px;
-      color: #0f0; font: bold 13px/2 monospace;
-      text-shadow: 0 0 6px #003300;
+      color: #0f0; font: bold 13px/1.7 "JetBrains Mono", monospace;
+      text-shadow: 0 0 6px rgba(0,40,0,0.9);
       pointer-events: none;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.32);
+      border-left: 2px solid #0f0;
+      border-radius: 0 4px 4px 0;
     }
+    #hud .row { display: flex; gap: 10px; min-width: 160px; }
+    #hud .row span:first-child { color: rgba(0,255,0,0.55); width: 36px; }
+    #hud .row span:last-child { color: #0f0; margin-left: auto; font-variant-numeric: tabular-nums; }
+    #weather {
+      position: fixed; top: 14px; right: 14px;
+      color: #fff; font: 12px/1.7 "JetBrains Mono", monospace;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+      pointer-events: none;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.32);
+      border-radius: 4px;
+      min-width: 160px;
+    }
+    #weather .on { color: #ffd966; }
+    #weather .off { color: rgba(255,255,255,0.4); }
     #controls {
-      position: fixed; bottom: 36px; right: 14px;
-      color: rgba(255,255,255,0.75); font: 12px/1.8 monospace;
+      position: fixed; bottom: 32px; right: 14px;
+      color: rgba(255,255,255,0.78); font: 11.5px/1.75 "JetBrains Mono", monospace;
       text-align: right; pointer-events: none;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.55);
     }
+    #controls kbd {
+      display: inline-block;
+      padding: 1px 6px;
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 3px;
+      font: 10.5px "JetBrains Mono", monospace;
+      color: #fff;
+    }
+    #message {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      padding: 18px 28px;
+      background: rgba(0,0,0,0.7); color: #fff;
+      font: bold 18px sans-serif; border-radius: 8px;
+      pointer-events: none; opacity: 0;
+      transition: opacity 0.35s ease;
+      text-align: center; line-height: 1.4;
+    }
+    #message.show { opacity: 1; }
     footer {
       position: fixed; bottom: 0; width: 100%; text-align: center;
       padding: 5px; font: 11px sans-serif;
-      color: rgba(255,255,255,0.4); pointer-events: none;
+      color: rgba(255,255,255,0.42); pointer-events: none;
     }
-    footer a { color: rgba(255,255,255,0.5); text-decoration: none; }
+    footer a { color: rgba(255,255,255,0.55); text-decoration: none; }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
   <div id="hud">
-    <div>ALT <span id="alt">0</span> m</div>
-    <div>SPD <span id="spd">0</span> m/s</div>
-    <div>HDG <span id="hdg">000</span>&deg;</div>
-    <div>THR <span id="thr">60</span>%</div>
+    <div class="row"><span>ALT</span><span id="alt">0</span><span style="color:rgba(0,255,0,0.5)">m</span></div>
+    <div class="row"><span>SPD</span><span id="spd">0</span><span style="color:rgba(0,255,0,0.5)">m/s</span></div>
+    <div class="row"><span>HDG</span><span id="hdg">000</span><span style="color:rgba(0,255,0,0.5)">&deg;</span></div>
+    <div class="row"><span>THR</span><span id="thr">55</span><span style="color:rgba(0,255,0,0.5)">%</span></div>
+  </div>
+  <div id="weather">
+    <div>WIND <span id="windState" class="off">OFF</span> <span id="windDetail" style="opacity:0.55"></span></div>
+    <div>FOG <span id="fogState" class="off">OFF</span></div>
+    <div style="margin-top:6px; color:rgba(255,255,255,0.5); font-size:11px;">Runways: <span id="runwayDist" style="color:#ffd966">--</span></div>
   </div>
   <div id="controls">
-    &uarr; &darr; &nbsp; Pitch<br>
-    &larr; &rarr; &nbsp; Roll<br>
-    W / S &nbsp; Throttle<br>
-    Q / E &nbsp; Yaw
+    <div><kbd>&larr;</kbd> <kbd>&rarr;</kbd> &nbsp; Turn</div>
+    <div><kbd>&uarr;</kbd> <kbd>&darr;</kbd> &nbsp; Pitch</div>
+    <div><kbd>W</kbd> <kbd>S</kbd> &nbsp;&nbsp; Throttle</div>
+    <div><kbd>Q</kbd> <kbd>E</kbd> &nbsp;&nbsp; Yaw (rudder)</div>
+    <div style="margin-top:6px;"><kbd>R</kbd> Wind &nbsp; <kbd>F</kbd> Fog &nbsp; <kbd>Space</kbd> Reset</div>
   </div>
+  <div id="message"></div>
   <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a></footer>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
@@ -48,7 +95,7 @@
 'use strict';
 
 const canvas = document.getElementById('c');
-const gl = canvas.getContext('webgl');
+const gl = canvas.getContext('webgl', { antialias: true });
 if (!gl) {
   document.body.innerHTML = '<p style="color:#f55;padding:24px;font-family:sans-serif">WebGL is not supported in this browser.</p>';
   throw new Error('no webgl');
@@ -64,10 +111,9 @@ function mkShader(type, src) {
     throw new Error('Shader error: ' + gl.getShaderInfoLog(s));
   return s;
 }
-
 function mkProg(vsSrc, fsSrc) {
   const p = gl.createProgram();
-  gl.attachShader(p, mkShader(gl.VERTEX_SHADER,   vsSrc));
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vsSrc));
   gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fsSrc));
   gl.linkProgram(p);
   if (!gl.getProgramParameter(p, gl.LINK_STATUS))
@@ -75,23 +121,70 @@ function mkProg(vsSrc, fsSrc) {
   return p;
 }
 
-// ── Shader sources ─────────────────────────────────────────────────────────
+// ── Shaders ────────────────────────────────────────────────────────────────
 
-// Ground: procedural checkerboard from world-space position
+// Ground: checkerboard + 2 runways painted on top, with fog falloff
 const GROUND_VS = `
   attribute vec3 aPos;
   uniform mat4 uMVP;
   varying vec3 vWP;
+  varying float vDistCamSq;
+  uniform vec3 uCam;
   void main() {
     gl_Position = uMVP * vec4(aPos, 1.0);
     vWP = aPos;
+    vec3 d = aPos - uCam;
+    vDistCamSq = d.x*d.x + d.z*d.z;
   }`;
 const GROUND_FS = `
   precision mediump float;
   varying vec3 vWP;
+  varying float vDistCamSq;
+  uniform float uFog;
+  uniform vec3 uFogColor;
+  // Runway 1 centred on origin, oriented along +Z
+  // Runway 2 centred on (2400, 0, 1800), rotated 60deg about Y
+  bool onRunway(vec3 p, vec3 c, float rotRad, float halfW, float halfL) {
+    float dx = p.x - c.x;
+    float dz = p.z - c.z;
+    float ca = cos(rotRad), sa = sin(rotRad);
+    float lx =  ca * dx + sa * dz;
+    float lz = -sa * dx + ca * dz;
+    return abs(lx) < halfW && abs(lz) < halfL;
+  }
+  bool centerLine(vec3 p, vec3 c, float rotRad, float halfL) {
+    float dx = p.x - c.x;
+    float dz = p.z - c.z;
+    float ca = cos(rotRad), sa = sin(rotRad);
+    float lx =  ca * dx + sa * dz;
+    float lz = -sa * dx + ca * dz;
+    if (abs(lz) > halfL) return false;
+    if (abs(lx) > 4.0) return false;
+    return mod(lz, 80.0) < 40.0;
+  }
   void main() {
+    vec3 col;
+    // checkerboard grass
     float c = mod(floor(vWP.x / 60.0) + floor(vWP.z / 60.0), 2.0);
-    vec3 col = c < 1.0 ? vec3(0.20, 0.50, 0.20) : vec3(0.28, 0.60, 0.28);
+    col = c < 1.0 ? vec3(0.20, 0.50, 0.20) : vec3(0.28, 0.60, 0.28);
+
+    // runway tarmac
+    if (onRunway(vWP, vec3(0.0,0.0,0.0), 0.0, 35.0, 400.0)) {
+      col = vec3(0.16, 0.17, 0.20);
+      if (centerLine(vWP, vec3(0.0,0.0,0.0), 0.0, 380.0))
+        col = vec3(0.92, 0.92, 0.92);
+    }
+    if (onRunway(vWP, vec3(2400.0,0.0,1800.0), 1.047, 35.0, 400.0)) {
+      col = vec3(0.16, 0.17, 0.20);
+      if (centerLine(vWP, vec3(2400.0,0.0,1800.0), 1.047, 380.0))
+        col = vec3(0.92, 0.92, 0.92);
+    }
+
+    // fog
+    if (uFog > 0.5) {
+      float fogMix = clamp(vDistCamSq / 4000000.0, 0.0, 1.0);
+      col = mix(col, uFogColor, fogMix);
+    }
     gl_FragColor = vec4(col, 1.0);
   }`;
 
@@ -110,30 +203,50 @@ const PLANE_FS = `
   varying vec3 vCol;
   void main() { gl_FragColor = vec4(vCol, 1.0); }`;
 
+// Cloud billboards: soft blobs in the sky
+const CLOUD_VS = `
+  attribute vec3 aPos;
+  attribute vec2 aUV;
+  uniform mat4 uMVP;
+  varying vec2 vUV;
+  void main() {
+    gl_Position = uMVP * vec4(aPos, 1.0);
+    vUV = aUV;
+  }`;
+const CLOUD_FS = `
+  precision mediump float;
+  varying vec2 vUV;
+  uniform float uFog;
+  uniform vec3 uFogColor;
+  void main() {
+    float d = distance(vUV, vec2(0.5));
+    float a = smoothstep(0.5, 0.18, d);
+    vec3 c = vec3(0.98, 0.99, 1.0);
+    if (uFog > 0.5) c = mix(c, uFogColor, 0.7);
+    gl_FragColor = vec4(c, a * 0.85);
+  }`;
+
 const groundProg = mkProg(GROUND_VS, GROUND_FS);
 const planeProg  = mkProg(PLANE_VS,  PLANE_FS);
+const cloudProg  = mkProg(CLOUD_VS,  CLOUD_FS);
 
 // ── Ground buffer ──────────────────────────────────────────────────────────
-// One huge quad; checkerboard computed in fragment shader.
 const groundBuf = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, groundBuf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-  -30000, 0, -30000,   30000, 0, -30000,   30000, 0,  30000,
-  -30000, 0, -30000,   30000, 0,  30000,  -30000, 0,  30000,
+  -30000, 0, -30000,  30000, 0, -30000,  30000, 0,  30000,
+  -30000, 0, -30000,  30000, 0,  30000, -30000, 0,  30000,
 ]), gl.STATIC_DRAW);
 
 // ── Plane geometry ─────────────────────────────────────────────────────────
-// Convention: nose = +Z, up = +Y, right = +X (all in local space).
-
-function addBox(arr, x0, y0, z0, x1, y1, z1, r, g, b) {
-  // 6 faces × 2 triangles × 3 vertices = 36 vertices per box.
+function addBox(arr, x0,y0,z0, x1,y1,z1, r,g,b) {
   const faces = [
-    [x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y0,z1, x1,y1,z1, x0,y1,z1], // +Z face
-    [x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y0,z0, x0,y1,z0, x1,y1,z0], // -Z face
-    [x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y0,z0, x0,y1,z1, x0,y1,z0], // -X face
-    [x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y0,z1, x1,y1,z0, x1,y1,z1], // +X face
-    [x0,y1,z1, x1,y1,z1, x1,y1,z0, x0,y1,z1, x1,y1,z0, x0,y1,z0], // +Y face
-    [x0,y0,z0, x1,y0,z0, x1,y0,z1, x0,y0,z0, x1,y0,z1, x0,y0,z1], // -Y face
+    [x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y0,z1, x1,y1,z1, x0,y1,z1],
+    [x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y0,z0, x0,y1,z0, x1,y1,z0],
+    [x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y0,z0, x0,y1,z1, x0,y1,z0],
+    [x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y0,z1, x1,y1,z0, x1,y1,z1],
+    [x0,y1,z1, x1,y1,z1, x1,y1,z0, x0,y1,z1, x1,y1,z0, x0,y1,z0],
+    [x0,y0,z0, x1,y0,z0, x1,y0,z1, x0,y0,z0, x1,y0,z1, x0,y0,z1],
   ];
   for (const face of faces) {
     for (let i = 0; i < face.length; i += 3) {
@@ -141,34 +254,88 @@ function addBox(arr, x0, y0, z0, x1, y1, z1, r, g, b) {
     }
   }
 }
-
 const planeVerts = [];
-addBox(planeVerts, -0.3, -0.3, -2.2,  0.3,  0.3,  2.2,  0.76, 0.76, 0.82); // fuselage
-addBox(planeVerts, -3.5, -0.1, -0.6,  3.5,  0.1,  0.6,  0.70, 0.72, 0.78); // main wings
-addBox(planeVerts, -1.4, -0.07,-2.05, 1.4,  0.07,-1.50, 0.68, 0.70, 0.76); // horizontal tail
-addBox(planeVerts, -0.06, 0.05,-2.1,  0.06, 0.90,-1.5,  0.64, 0.67, 0.74); // vertical tail
-addBox(planeVerts, -0.22, 0.28, 0.2,  0.22, 0.62,  1.0,  0.33, 0.55, 0.78); // canopy
-
+addBox(planeVerts, -0.3,-0.3,-2.2,  0.3, 0.3, 2.2,  0.78,0.78,0.84); // fuselage
+addBox(planeVerts, -3.6,-0.1,-0.6,  3.6, 0.1, 0.6,  0.72,0.74,0.80); // wings
+addBox(planeVerts, -1.4,-0.07,-2.05, 1.4, 0.07,-1.50, 0.70,0.72,0.78); // h-tail
+addBox(planeVerts, -0.06,0.05,-2.1, 0.06, 0.92,-1.5,  0.66,0.69,0.76); // v-tail
+addBox(planeVerts, -0.22,0.28, 0.2, 0.22, 0.62, 1.0,  0.33,0.58,0.82); // canopy
+addBox(planeVerts, -0.18,-0.5,-1.0, 0.18,-0.32, 0.8,  0.40,0.42,0.46); // belly fairing (visual interest)
 const planeBuf = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, planeBuf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(planeVerts), gl.STATIC_DRAW);
 const planeVertCount = planeVerts.length / 6;
 
-// ── State ──────────────────────────────────────────────────────────────────
+// ── Clouds ─────────────────────────────────────────────────────────────────
+// Each cloud is a single quad facing the camera, soft alpha blob.
+const NUM_CLOUDS = 90;
+const clouds = [];
+for (let i = 0; i < NUM_CLOUDS; i++) {
+  clouds.push({
+    x: (Math.random() - 0.5) * 8000,
+    y: 350 + Math.random() * 850,
+    z: (Math.random() - 0.5) * 8000,
+    size: 120 + Math.random() * 220,
+  });
+}
 
-const state = {
-  pos:      vec3.fromValues(0, 150, 0),
-  q:        quat.create(),   // identity: level, nose pointing +Z
-  speed:    80,              // m/s
-  throttle: 0.55,
-};
+// Cloud quad geometry (single shared, will be transformed per-cloud)
+const cloudQuadVerts = new Float32Array([
+  -1,-1,0,  0,0,  1,-1,0, 1,0,  1, 1,0, 1,1,
+  -1,-1,0,  0,0,  1, 1,0, 1,1, -1, 1,0, 0,1,
+]);
+const cloudBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, cloudBuf);
+gl.bufferData(gl.ARRAY_BUFFER, cloudQuadVerts, gl.STATIC_DRAW);
+
+// ── State ──────────────────────────────────────────────────────────────────
+const RUNWAY1 = { x: 0, z: 0 };
+const RUNWAY2 = { x: 2400, z: 1800 };
+
+function initState() {
+  return {
+    pos:      vec3.fromValues(0, 250, -1500),
+    q:        quat.create(),
+    speed:    100,
+    throttle: 0.55,
+    wind:     false,
+    windDir:  Math.random() * Math.PI * 2,
+    fog:      false,
+    landedMsgTimer: 0,
+  };
+}
+let state = initState();
 
 const keys = {};
-window.addEventListener('keydown', e => { keys[e.key] = true;  e.preventDefault(); }, { passive: false });
-window.addEventListener('keyup',   e => { keys[e.key] = false; });
+window.addEventListener('keydown', e => {
+  // Toggles fire once per press
+  if (!keys[e.key]) {
+    if (e.key === 'r' || e.key === 'R') {
+      state.wind = !state.wind;
+      if (state.wind) state.windDir = Math.random() * Math.PI * 2;
+      flash(state.wind ? 'Wind on' : 'Wind off');
+    } else if (e.key === 'f' || e.key === 'F') {
+      state.fog = !state.fog;
+      flash(state.fog ? 'Fog on' : 'Fog off');
+    } else if (e.key === ' ') {
+      state = initState();
+      flash('Reset');
+    }
+  }
+  keys[e.key] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+}, { passive: false });
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+const msgEl = document.getElementById('message');
+let msgTimer = 0;
+function flash(text) {
+  msgEl.textContent = text;
+  msgEl.classList.add('show');
+  msgTimer = 1.2;
+}
 
 // ── Matrices ───────────────────────────────────────────────────────────────
-
 const proj   = mat4.create();
 const view   = mat4.create();
 const mvp    = mat4.create();
@@ -184,78 +351,140 @@ window.addEventListener('resize', resize);
 resize();
 
 // ── Physics ────────────────────────────────────────────────────────────────
-
-const MAX_SPEED  = 220;   // m/s at full throttle
-const MIN_GLIDE  = 25;    // m/s (stall speed; below this plane sinks fast)
-const PITCH_RATE = 1.1;   // rad/s
+const MAX_SPEED  = 220;
+const MIN_GLIDE  = 25;
+const PITCH_RATE = 1.1;
 const ROLL_RATE  = 1.4;
 const YAW_RATE   = 0.7;
-const GRAVITY    = 5.0;   // m/s² (gentler than real, keeps it fun)
+const GRAVITY    = 5.0;
+const WIND_SPEED = 18; // m/s sideways drift when wind is on
 
 function update(dt) {
   // Throttle
   if (keys['w'] || keys['W']) state.throttle = Math.min(1.0, state.throttle + 0.35 * dt);
   if (keys['s'] || keys['S']) state.throttle = Math.max(0.0, state.throttle - 0.35 * dt);
 
-  // Target airspeed from throttle
   const target = MIN_GLIDE + state.throttle * (MAX_SPEED - MIN_GLIDE);
   state.speed  = state.speed + (target - state.speed) * Math.min(1, 1.2 * dt);
 
-  // Rotations — all in the plane's local (body) frame
-  if (keys['ArrowUp'])   quat.rotateX(state.q, state.q,  PITCH_RATE * dt);  // pitch up
-  if (keys['ArrowDown']) quat.rotateX(state.q, state.q, -PITCH_RATE * dt);  // pitch down
-  if (keys['ArrowLeft']) quat.rotateZ(state.q, state.q,  ROLL_RATE  * dt);  // roll left
-  if (keys['ArrowRight'])quat.rotateZ(state.q, state.q, -ROLL_RATE  * dt);  // roll right
-  if (keys['q'] || keys['Q']) quat.rotateY(state.q, state.q,  YAW_RATE * dt); // yaw left
-  if (keys['e'] || keys['E']) quat.rotateY(state.q, state.q, -YAW_RATE * dt); // yaw right
+  // Pitch (up/down arrows)
+  if (keys['ArrowUp'])   quat.rotateX(state.q, state.q,  PITCH_RATE * dt);
+  if (keys['ArrowDown']) quat.rotateX(state.q, state.q, -PITCH_RATE * dt);
+
+  // Coordinated turn: arrow Left/Right rolls AND yaws — pressing left actually turns left.
+  // (Pure-roll-only feels broken to anyone who hasn't flown a real aircraft.)
+  if (keys['ArrowLeft']) {
+    quat.rotateZ(state.q, state.q,  ROLL_RATE * dt);
+    quat.rotateY(state.q, state.q,  YAW_RATE  * 0.9 * dt);  // turn left
+  }
+  if (keys['ArrowRight']) {
+    quat.rotateZ(state.q, state.q, -ROLL_RATE * dt);
+    quat.rotateY(state.q, state.q, -YAW_RATE  * 0.9 * dt);  // turn right
+  }
+
+  // Pure yaw (rudder) — Q/E. Useful for fine corrections.
+  if (keys['q'] || keys['Q']) quat.rotateY(state.q, state.q,  YAW_RATE * dt);
+  if (keys['e'] || keys['E']) quat.rotateY(state.q, state.q, -YAW_RATE * dt);
 
   quat.normalize(state.q, state.q);
 
   // Forward direction in world space
   const fwd = vec3.transformQuat(vec3.create(), [0, 0, 1], state.q);
 
-  // Move along forward vector
   state.pos[0] += fwd[0] * state.speed * dt;
   state.pos[1] += fwd[1] * state.speed * dt;
   state.pos[2] += fwd[2] * state.speed * dt;
 
-  // Gravity — reduced by speed (more speed = more lift)
+  // Wind: lateral drift in world coords
+  if (state.wind) {
+    state.pos[0] += Math.cos(state.windDir) * WIND_SPEED * dt;
+    state.pos[2] += Math.sin(state.windDir) * WIND_SPEED * dt;
+  }
+
+  // Gravity reduced by speed (more speed = more lift)
   const liftFactor = Math.min(1, state.speed / 80);
   state.pos[1] -= GRAVITY * (1 - liftFactor * 0.8) * dt;
 
-  // Ground floor
-  if (state.pos[1] < 4) state.pos[1] = 4;
+  // Soft ground collision — settle on runway if you touch down softly enough
+  if (state.pos[1] < 4) {
+    state.pos[1] = 4;
+    // Check if on a runway
+    const onR1 = Math.abs(state.pos[0]) < 35 && Math.abs(state.pos[2]) < 400;
+    const dx = state.pos[0] - RUNWAY2.x;
+    const dz = state.pos[2] - RUNWAY2.z;
+    const ca = Math.cos(1.047), sa = Math.sin(1.047);
+    const lx =  ca * dx + sa * dz;
+    const lz = -sa * dx + ca * dz;
+    const onR2 = Math.abs(lx) < 35 && Math.abs(lz) < 400;
+    if ((onR1 || onR2) && state.landedMsgTimer <= 0) {
+      flash('Touchdown! 🛬');
+      state.landedMsgTimer = 3.0;
+    }
+  }
+  if (state.landedMsgTimer > 0) state.landedMsgTimer -= dt;
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
-
 function render() {
-  gl.clearColor(0.44, 0.67, 0.94, 1);
+  const fogColor = state.fog ? [0.78, 0.82, 0.85] : [0.44, 0.67, 0.94];
+  gl.clearColor(fogColor[0], fogColor[1], fogColor[2], 1);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST);
 
-  // Camera: positioned behind and above the plane in its local frame
+  // Camera: behind + above the plane in local frame
   const camOff = vec3.transformQuat(vec3.create(), [0, 5, -16], state.q);
   const camPos  = vec3.add(vec3.create(), state.pos, camOff);
-  // Look a little ahead of centre mass
   const ahead   = vec3.transformQuat(vec3.create(), [0, 0, 3], state.q);
   const lookTgt = vec3.add(vec3.create(), state.pos, ahead);
   mat4.lookAt(view, camPos, lookTgt, [0, 1, 0]);
 
   // ── Ground ──
   gl.useProgram(groundProg);
-  mat4.multiply(mvp, proj, view);  // model = identity (ground stays put)
+  mat4.multiply(mvp, proj, view);
   gl.uniformMatrix4fv(gl.getUniformLocation(groundProg, 'uMVP'), false, mvp);
+  gl.uniform3fv(gl.getUniformLocation(groundProg, 'uCam'), camPos);
+  gl.uniform1f(gl.getUniformLocation(groundProg, 'uFog'), state.fog ? 1.0 : 0.0);
+  gl.uniform3fv(gl.getUniformLocation(groundProg, 'uFogColor'), fogColor);
   gl.bindBuffer(gl.ARRAY_BUFFER, groundBuf);
   const gPosLoc = gl.getAttribLocation(groundProg, 'aPos');
   gl.enableVertexAttribArray(gPosLoc);
   gl.vertexAttribPointer(gPosLoc, 3, gl.FLOAT, false, 12, 0);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 
+  // ── Clouds (blended, no depth write) ──
+  gl.useProgram(cloudProg);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.depthMask(false);
+  gl.bindBuffer(gl.ARRAY_BUFFER, cloudBuf);
+  const cPosLoc = gl.getAttribLocation(cloudProg, 'aPos');
+  const cUVLoc  = gl.getAttribLocation(cloudProg, 'aUV');
+  gl.enableVertexAttribArray(cPosLoc);
+  gl.enableVertexAttribArray(cUVLoc);
+  gl.vertexAttribPointer(cPosLoc, 3, gl.FLOAT, false, 20, 0);
+  gl.vertexAttribPointer(cUVLoc,  2, gl.FLOAT, false, 20, 12);
+  gl.uniform1f(gl.getUniformLocation(cloudProg, 'uFog'), state.fog ? 1.0 : 0.0);
+  gl.uniform3fv(gl.getUniformLocation(cloudProg, 'uFogColor'), fogColor);
+  for (const cl of clouds) {
+    mat4.identity(modelM);
+    mat4.translate(modelM, modelM, [cl.x, cl.y, cl.z]);
+    // Cheap "face the camera": only Y-rotation to point toward camPos
+    const dx = camPos[0] - cl.x, dz = camPos[2] - cl.z;
+    const angle = Math.atan2(dx, dz);
+    mat4.rotateY(modelM, modelM, angle);
+    mat4.scale(modelM, modelM, [cl.size, cl.size * 0.55, 1]);
+    mat4.multiply(mvp, proj, view);
+    mat4.multiply(mvp, mvp, modelM);
+    gl.uniformMatrix4fv(gl.getUniformLocation(cloudProg, 'uMVP'), false, mvp);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+  gl.depthMask(true);
+  gl.disable(gl.BLEND);
+
   // ── Plane ──
   gl.useProgram(planeProg);
   mat4.fromRotationTranslation(modelM, state.q, state.pos);
-  mat4.scale(modelM, modelM, [2.2, 2.2, 2.2]);  // scale up for visibility
+  mat4.scale(modelM, modelM, [2.2, 2.2, 2.2]);
   mat4.multiply(mvp, proj, view);
   mat4.multiply(mvp, mvp, modelM);
   gl.uniformMatrix4fv(gl.getUniformLocation(planeProg, 'uMVP'), false, mvp);
@@ -264,17 +493,25 @@ function render() {
   const pColLoc = gl.getAttribLocation(planeProg, 'aCol');
   gl.enableVertexAttribArray(pPosLoc);
   gl.enableVertexAttribArray(pColLoc);
-  gl.vertexAttribPointer(pPosLoc, 3, gl.FLOAT, false, 24,  0);
+  gl.vertexAttribPointer(pPosLoc, 3, gl.FLOAT, false, 24, 0);
   gl.vertexAttribPointer(pColLoc, 3, gl.FLOAT, false, 24, 12);
   gl.drawArrays(gl.TRIANGLES, 0, planeVertCount);
 }
 
 // ── HUD ────────────────────────────────────────────────────────────────────
-
 const altEl = document.getElementById('alt');
 const spdEl = document.getElementById('spd');
 const hdgEl = document.getElementById('hdg');
 const thrEl = document.getElementById('thr');
+const windStateEl = document.getElementById('windState');
+const windDetailEl = document.getElementById('windDetail');
+const fogStateEl   = document.getElementById('fogState');
+const runwayDistEl = document.getElementById('runwayDist');
+
+function compass(deg) {
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(deg / 45) % 8];
+}
 
 function updateHUD() {
   altEl.textContent = Math.max(0, Math.round(state.pos[1]));
@@ -283,10 +520,28 @@ function updateHUD() {
   const hdg = ((Math.atan2(fwd[0], fwd[2]) * 180 / Math.PI) + 360) % 360;
   hdgEl.textContent = String(Math.round(hdg)).padStart(3, '0');
   thrEl.textContent = Math.round(state.throttle * 100);
+
+  if (state.wind) {
+    windStateEl.textContent = 'ON';
+    windStateEl.className = 'on';
+    const wd = ((state.windDir * 180 / Math.PI) + 360) % 360;
+    windDetailEl.textContent = '(' + compass(wd) + ')';
+  } else {
+    windStateEl.textContent = 'OFF';
+    windStateEl.className = 'off';
+    windDetailEl.textContent = '';
+  }
+  fogStateEl.textContent = state.fog ? 'ON' : 'OFF';
+  fogStateEl.className   = state.fog ? 'on' : 'off';
+
+  // Nearest runway distance
+  const d1 = Math.hypot(state.pos[0] - RUNWAY1.x, state.pos[2] - RUNWAY1.z);
+  const d2 = Math.hypot(state.pos[0] - RUNWAY2.x, state.pos[2] - RUNWAY2.z);
+  const nearest = Math.min(d1, d2);
+  runwayDistEl.textContent = (nearest / 1000).toFixed(1) + ' km (#' + (d1 < d2 ? '1' : '2') + ')';
 }
 
 // ── Main loop ──────────────────────────────────────────────────────────────
-
 let prev = 0;
 function frame(ts) {
   const dt = prev ? Math.min((ts - prev) / 1000, 0.05) : 0.016;
@@ -294,6 +549,10 @@ function frame(ts) {
   update(dt);
   render();
   updateHUD();
+  if (msgTimer > 0) {
+    msgTimer -= dt;
+    if (msgTimer <= 0) msgEl.classList.remove('show');
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
