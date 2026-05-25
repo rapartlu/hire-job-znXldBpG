@@ -115,7 +115,7 @@
     <div style="margin-top:6px;"><kbd>C</kbd> View &nbsp; <kbd>R</kbd> Wind &nbsp; <kbd>F</kbd> Fog &nbsp; <kbd>Space</kbd> Reset</div>
   </div>
   <div id="message"></div>
-  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a> &middot; <span style="opacity:0.7;font-family:monospace;">v7</span></footer>
+  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a> &middot; <span style="opacity:0.7;font-family:monospace;">v8</span></footer>
 
   <script type="importmap">
     {
@@ -255,11 +255,21 @@
     function makeRunway(x, z, rotY) {
       const geom = new THREE.PlaneGeometry(70, 1200);
       geom.rotateX(-Math.PI / 2);
-      const mat = new THREE.MeshStandardMaterial({ map: runwayTex, roughness: 0.85, metalness: 0 });
+      // polygonOffset pushes the runway slightly toward the camera in depth
+      // so it doesn't z-fight with the ground plane at large distances.
+      const mat = new THREE.MeshStandardMaterial({
+        map: runwayTex,
+        roughness: 0.85,
+        metalness: 0,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      });
       const m = new THREE.Mesh(geom, mat);
-      m.position.set(x, 0.1, z);
+      m.position.set(x, 0.5, z);          // lift well above the ground plane to eliminate flicker
       m.rotation.y = rotY;
       m.receiveShadow = true;
+      m.renderOrder = 1;                  // draw after ground
       return m;
     }
     const RUNWAY1 = { x: 0, z: 0, rot: 0 };
@@ -605,6 +615,19 @@
       const maxV = 280;
       if (state.vel.length() > maxV) state.vel.setLength(maxV);
 
+      // Arcade-feel: continuously redirect velocity toward the plane's nose.
+      // Real flight has lots of inertia — momentum persists when you yaw, and
+      // it takes a coordinated turn (banked lift) to redirect it over several
+      // seconds. That feels unresponsive in a browser game where players
+      // expect the plane to GO WHERE IT'S POINTED.
+      // Solution: blend the current velocity direction toward forward with a
+      // ~1.5s time constant. Magnitude is preserved (we don't add energy).
+      if (airspeed > 1) {
+        const blend = 1 - Math.exp(-1.8 * dt);  // ~1.5s response
+        const targetDir = TMP_F.clone().multiplyScalar(airspeed);
+        state.vel.lerp(targetDir, blend);
+      }
+
       state.pos.addScaledVector(state.vel, dt);
 
       // Wind drift
@@ -619,24 +642,25 @@
 
       let pitchRate = 0, rollRate = 0, yawRate = 0;
 
-      // Pitch: UP arrow descends, DOWN ascends (operator's flight-sim convention)
-      // ArrowUp = elevator down = nose down
-      if (keys['ArrowUp'])   pitchRate -= ELEV_RATE * auth;
-      if (keys['ArrowDown']) pitchRate += ELEV_RATE * auth;
+      // v8: all controls flipped per operator test. Final convention:
+      //   UP arrow = climb, DOWN arrow = descend
+      //   LEFT arrow = turn left (roll+yaw left)
+      //   RIGHT arrow = turn right
+      //   Q = yaw left, E = yaw right
+      if (keys['ArrowUp'])   pitchRate += ELEV_RATE * auth;
+      if (keys['ArrowDown']) pitchRate -= ELEV_RATE * auth;
 
-      // Horizontal: per operator flip in v6 — LEFT = roll/yaw right, RIGHT = roll/yaw left
       if (keys['ArrowLeft']) {
-        rollRate -= AIL_RATE * auth;
-        yawRate  -= RUD_RATE * 0.5 * auth;
-      }
-      if (keys['ArrowRight']) {
         rollRate += AIL_RATE * auth;
         yawRate  += RUD_RATE * 0.5 * auth;
       }
+      if (keys['ArrowRight']) {
+        rollRate -= AIL_RATE * auth;
+        yawRate  -= RUD_RATE * 0.5 * auth;
+      }
 
-      // Pure rudder Q/E (also flipped to match)
-      if (keys['q'] || keys['Q']) yawRate -= RUD_RATE * auth;
-      if (keys['e'] || keys['E']) yawRate += RUD_RATE * auth;
+      if (keys['q'] || keys['Q']) yawRate += RUD_RATE * auth;
+      if (keys['e'] || keys['E']) yawRate -= RUD_RATE * auth;
 
       // Coordinated turn: bank angle adds yaw (gravity tilts lift sideways)
       const bankAngle = Math.atan2(TMP_R.y, TMP_U.y);
