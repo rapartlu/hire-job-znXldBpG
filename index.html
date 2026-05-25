@@ -85,10 +85,10 @@
     <div><kbd>&uarr;</kbd> <kbd>&darr;</kbd> &nbsp; Pitch</div>
     <div><kbd>W</kbd> <kbd>S</kbd> &nbsp;&nbsp; Throttle</div>
     <div><kbd>Q</kbd> <kbd>E</kbd> &nbsp;&nbsp; Yaw (rudder)</div>
-    <div style="margin-top:6px;"><kbd>R</kbd> Wind &nbsp; <kbd>F</kbd> Fog &nbsp; <kbd>Space</kbd> Reset</div>
+    <div style="margin-top:6px;"><kbd>C</kbd> View &nbsp; <kbd>R</kbd> Wind &nbsp; <kbd>F</kbd> Fog &nbsp; <kbd>Space</kbd> Reset</div>
   </div>
   <div id="message"></div>
-  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a> &middot; <span style="opacity:0.7;font-family:monospace;">v4</span></footer>
+  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a> &middot; <span style="opacity:0.7;font-family:monospace;">v5</span></footer>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
   <script>
@@ -304,6 +304,7 @@ function initState() {
     landedMsgTimer: 0,
     crashed:  false,
     touchdownLatched: false,
+    cockpit:  false,
   };
 }
 let state = initState();
@@ -320,8 +321,13 @@ window.addEventListener('keydown', e => {
     } else if (e.key === 'f' || e.key === 'F') {
       state.fog = !state.fog;
       flash(state.fog ? 'Fog on' : 'Fog off');
+    } else if (e.key === 'c' || e.key === 'C') {
+      state.cockpit = !state.cockpit;
+      flash(state.cockpit ? 'Cockpit view' : 'Chase cam');
     } else if (e.key === ' ') {
+      const prevCockpit = state.cockpit;
       state = initState();
+      state.cockpit = prevCockpit;  // preserve view preference across resets
       lastY = state.pos[1];
       flash('Reset');
     }
@@ -502,12 +508,27 @@ function render() {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST);
 
-  // Camera: behind + above the plane in local frame
-  const camOff = vec3.transformQuat(vec3.create(), [0, 5, -16], state.q);
-  const camPos  = vec3.add(vec3.create(), state.pos, camOff);
-  const ahead   = vec3.transformQuat(vec3.create(), [0, 0, 3], state.q);
-  const lookTgt = vec3.add(vec3.create(), state.pos, ahead);
-  mat4.lookAt(view, camPos, lookTgt, [0, 1, 0]);
+  // Camera: two modes — chase cam (default) or cockpit (1st person).
+  // Toggle with C. Cockpit uses the plane's own up vector so the world tilts
+  // when you bank/yaw, which makes the rotation direction feel natural.
+  let camPos, lookTgt, upVec;
+  if (state.cockpit) {
+    // 1st person: pilot-eye height inside the canopy (plane rendered at 2.2x scale)
+    // canopy roof ~y=1.36 world; pilot head at ~1.0; looking forward through windshield
+    const camOff = vec3.transformQuat(vec3.create(), [0, 1.0, 1.0], state.q);
+    camPos  = vec3.add(vec3.create(), state.pos, camOff);
+    const ahead = vec3.transformQuat(vec3.create(), [0, 0.4, 50], state.q);
+    lookTgt = vec3.add(vec3.create(), state.pos, ahead);
+    upVec   = vec3.transformQuat(vec3.create(), [0, 1, 0], state.q); // tilts with plane
+  } else {
+    // Chase cam: behind + above, world-up so horizon stays level
+    const camOff = vec3.transformQuat(vec3.create(), [0, 5, -16], state.q);
+    camPos  = vec3.add(vec3.create(), state.pos, camOff);
+    const ahead = vec3.transformQuat(vec3.create(), [0, 0, 3], state.q);
+    lookTgt = vec3.add(vec3.create(), state.pos, ahead);
+    upVec   = [0, 1, 0];
+  }
+  mat4.lookAt(view, camPos, lookTgt, upVec);
 
   // ── Ground ──
   gl.useProgram(groundProg);
