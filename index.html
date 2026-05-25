@@ -615,15 +615,13 @@
       const maxV = 280;
       if (state.vel.length() > maxV) state.vel.setLength(maxV);
 
-      // Arcade-feel: continuously redirect velocity toward the plane's nose.
-      // Real flight has lots of inertia — momentum persists when you yaw, and
-      // it takes a coordinated turn (banked lift) to redirect it over several
-      // seconds. That feels unresponsive in a browser game where players
-      // expect the plane to GO WHERE IT'S POINTED.
-      // Solution: blend the current velocity direction toward forward with a
-      // ~1.5s time constant. Magnitude is preserved (we don't add energy).
+      // Arcade-feel: plane goes where its nose is pointed.
+      // Operator test on v8: 1.5s time constant felt unresponsive — plane still
+      // slid through the air after rotating. Tightened to ~0.4s so the
+      // velocity actually tracks the nose direction promptly.
+      // Magnitude preserved (no energy added).
       if (airspeed > 1) {
-        const blend = 1 - Math.exp(-1.8 * dt);  // ~1.5s response
+        const blend = 1 - Math.exp(-6 * dt);  // ~0.4s response
         const targetDir = TMP_F.clone().multiplyScalar(airspeed);
         state.vel.lerp(targetDir, blend);
       }
@@ -642,11 +640,7 @@
 
       let pitchRate = 0, rollRate = 0, yawRate = 0;
 
-      // v8: all controls flipped per operator test. Final convention:
-      //   UP arrow = climb, DOWN arrow = descend
-      //   LEFT arrow = turn left (roll+yaw left)
-      //   RIGHT arrow = turn right
-      //   Q = yaw left, E = yaw right
+      // v9: direction signs from v8 (operator confirmed correct).
       if (keys['ArrowUp'])   pitchRate += ELEV_RATE * auth;
       if (keys['ArrowDown']) pitchRate -= ELEV_RATE * auth;
 
