@@ -115,7 +115,7 @@
     <div style="margin-top:6px;"><kbd>C</kbd> View &nbsp; <kbd>R</kbd> Wind &nbsp; <kbd>F</kbd> Fog &nbsp; <kbd>Space</kbd> Reset</div>
   </div>
   <div id="message"></div>
-  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a> &middot; <span style="opacity:0.7;font-family:monospace;">v8</span></footer>
+  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a> &middot; <span style="opacity:0.7;font-family:monospace;">v10</span></footer>
 
   <script type="importmap">
     {
@@ -737,11 +737,20 @@
         lookOffset.set(0, 0.4, 50).applyQuaternion(state.q);
         upVec.set(0, 1, 0).applyQuaternion(state.q);
       } else {
-        camOffset.set(0, 5, -16).applyQuaternion(state.q);
-        lookOffset.set(0, 0, 3).applyQuaternion(state.q);
-        // Slight banking of the camera matches plane up to make turns feel natural
-        const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(state.q);
-        upVec.copy(planeUp).lerp(new THREE.Vector3(0, 1, 0), 0.6).normalize();
+        // Strict chase cam: locked behind the plane on yaw + pitch only.
+        // Roll is stripped so the horizon stays level — standard for flight
+        // games (FSX, GTA, Mario Kart). Player sees the plane bank in
+        // front of them; the world doesn't tilt with the plane.
+        const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(state.q);
+        // Yaw-only quaternion: rotates around world Y by plane's heading
+        const heading = Math.atan2(fwd.x, fwd.z);
+        const pitch = Math.asin(THREE.MathUtils.clamp(fwd.y, -1, 1));
+        const yawOnly = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), heading);
+        const pitchOnly = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitch);
+        const chaseQuat = yawOnly.multiply(pitchOnly);  // yaw, then pitch — no roll
+        camOffset.set(0, 5, -16).applyQuaternion(chaseQuat);
+        lookOffset.set(0, 0, 3).applyQuaternion(chaseQuat);
+        upVec.set(0, 1, 0);
       }
 
       camera.position.copy(state.pos).add(camOffset);
