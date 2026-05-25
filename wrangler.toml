@@ -1,0 +1,4 @@
+name = "znxldbpg-flightsim"
+main = "worker.js"
+compatibility_date = "2024-09-24"
+workers_dev = true

@@ -4,58 +4,152 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flight Sim</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E%E2%9C%88%EF%B8%8F%3C/text%3E%3C/svg%3E">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #4a7ab5; }
-    canvas { display: block; width: 100%; height: 100%; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #4a7ab5; font-family: -apple-system, system-ui, sans-serif; }
+    #c { display: block; width: 100%; height: 100%; }
+    /* Cockpit vignette - dark frame simulating cockpit window */
+    #cockpit-frame {
+      display: none;
+      position: fixed; inset: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse 70% 60% at 50% 42%, transparent 55%, rgba(12,9,6,0.88) 100%);
+      z-index: 5;
+    }
+    #cockpit-frame.active { display: block; }
+    /* Instrument panel canvas */
+    #instr-wrap {
+      display: none;
+      position: fixed; bottom: 44px; left: 50%; transform: translateX(-50%);
+      background: rgba(10,8,5,0.82);
+      border-radius: 14px;
+      padding: 10px 16px 6px;
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+      pointer-events: none;
+      z-index: 10;
+    }
+    #instr-wrap.active { display: block; }
+    #instr { display: block; }
+    /* HUD */
     #hud {
       position: fixed; top: 14px; left: 14px;
-      color: #0f0; font: bold 13px/2 monospace;
-      text-shadow: 0 0 6px #003300;
+      color: #0f0; font: bold 13px/1.7 "JetBrains Mono", monospace;
+      text-shadow: 0 0 6px rgba(0,40,0,0.9);
       pointer-events: none;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.32);
+      border-left: 2px solid #0f0;
+      border-radius: 0 4px 4px 0;
+      z-index: 20;
     }
+    #hud .row { display: flex; gap: 10px; min-width: 170px; }
+    #hud .row span:first-child { color: rgba(0,255,0,0.55); width: 44px; }
+    #hud .row span:last-child { color: #0f0; margin-left: auto; font-variant-numeric: tabular-nums; }
+    #hud .stall { color: #f44 !important; animation: blink 0.4s step-end infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+    #weather {
+      position: fixed; top: 14px; right: 14px;
+      color: #fff; font: 12px/1.7 "JetBrains Mono", monospace;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+      pointer-events: none;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.32);
+      border-radius: 4px;
+      min-width: 160px;
+      z-index: 20;
+    }
+    #weather .on  { color: #ffd966; }
+    #weather .off { color: rgba(255,255,255,0.4); }
     #controls {
-      position: fixed; bottom: 36px; right: 14px;
-      color: rgba(255,255,255,0.75); font: 12px/1.8 monospace;
+      position: fixed; bottom: 32px; right: 14px;
+      color: rgba(255,255,255,0.78); font: 11.5px/1.75 "JetBrains Mono", monospace;
       text-align: right; pointer-events: none;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.55);
+      z-index: 20;
     }
+    #controls kbd {
+      display: inline-block; padding: 1px 6px;
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 3px; font: 10.5px "JetBrains Mono", monospace; color: #fff;
+    }
+    #message {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      padding: 18px 28px;
+      background: rgba(0,0,0,0.7); color: #fff;
+      font: bold 18px sans-serif; border-radius: 8px;
+      pointer-events: none; opacity: 0;
+      transition: opacity 0.35s ease;
+      text-align: center; line-height: 1.5;
+      white-space: pre-line;
+      z-index: 30;
+    }
+    #message.show { opacity: 1; }
     footer {
       position: fixed; bottom: 0; width: 100%; text-align: center;
       padding: 5px; font: 11px sans-serif;
-      color: rgba(255,255,255,0.4); pointer-events: none;
+      color: rgba(255,255,255,0.42); pointer-events: none;
+      z-index: 20;
     }
-    footer a { color: rgba(255,255,255,0.5); text-decoration: none; }
+    footer a { color: rgba(255,255,255,0.55); text-decoration: none; }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
+
+  <!-- Cockpit vignette frame -->
+  <div id="cockpit-frame"></div>
+
+  <!-- Instrument panel (cockpit view only) -->
+  <div id="instr-wrap">
+    <canvas id="instr" width="600" height="188"></canvas>
+  </div>
+
+  <!-- Top-left HUD -->
   <div id="hud">
-    <div>ALT <span id="alt">0</span> m</div>
-    <div>SPD <span id="spd">0</span> m/s</div>
-    <div>HDG <span id="hdg">000</span>&deg;</div>
-    <div>THR <span id="thr">60</span>%</div>
+    <div class="row"><span>ALT</span><span id="alt">0</span><span style="color:rgba(0,255,0,0.5)">m</span></div>
+    <div class="row"><span>SPD</span><span id="spd">0</span><span style="color:rgba(0,255,0,0.5)">m/s</span></div>
+    <div class="row"><span>HDG</span><span id="hdg">000</span><span style="color:rgba(0,255,0,0.5)">&deg;</span></div>
+    <div class="row"><span>THR</span><span id="thr">55</span><span style="color:rgba(0,255,0,0.5)">%</span></div>
+    <div class="row" id="stall-row" style="display:none"><span class="stall" style="width:auto;color:#f44">STALL</span></div>
+    <div class="row" id="view-row"><span style="color:rgba(0,255,0,0.4)">VIEW</span><span id="viewMode" style="color:#ffd966">CHASE</span></div>
   </div>
+
+  <!-- Top-right weather panel -->
+  <div id="weather">
+    <div>WIND <span id="windState" class="off">OFF</span> <span id="windDetail" style="opacity:0.55"></span></div>
+    <div>FOG <span id="fogState" class="off">OFF</span></div>
+    <div style="margin-top:6px; color:rgba(255,255,255,0.5); font-size:11px;">Runways: <span id="runwayDist" style="color:#ffd966">--</span></div>
+  </div>
+
+  <!-- Bottom-right controls -->
   <div id="controls">
-    &uarr; &darr; &nbsp; Pitch<br>
-    &larr; &rarr; &nbsp; Roll<br>
-    W / S &nbsp; Throttle<br>
-    Q / E &nbsp; Yaw
+    <div><kbd>&larr;</kbd> <kbd>&rarr;</kbd> &nbsp; Turn</div>
+    <div><kbd>&uarr;</kbd> <kbd>&darr;</kbd> &nbsp; Pitch</div>
+    <div><kbd>W</kbd> <kbd>S</kbd> &nbsp;&nbsp; Throttle</div>
+    <div><kbd>Q</kbd> <kbd>E</kbd> &nbsp;&nbsp; Rudder</div>
+    <div><kbd>C</kbd> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Cockpit/Chase</div>
+    <div style="margin-top:6px;"><kbd>R</kbd> Wind &nbsp; <kbd>F</kbd> Fog &nbsp; <kbd>Space</kbd> Reset</div>
   </div>
-  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a></footer>
+
+  <div id="message"></div>
+  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a> &middot; <span style="opacity:0.7;font-family:monospace;">v5</span></footer>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
   <script>
 'use strict';
 
+// ── WebGL context ──────────────────────────────────────────────────────────
 const canvas = document.getElementById('c');
-const gl = canvas.getContext('webgl');
+const gl = canvas.getContext('webgl', { antialias: true });
 if (!gl) {
   document.body.innerHTML = '<p style="color:#f55;padding:24px;font-family:sans-serif">WebGL is not supported in this browser.</p>';
   throw new Error('no webgl');
 }
 
 // ── Shader helpers ─────────────────────────────────────────────────────────
-
 function mkShader(type, src) {
   const s = gl.createShader(type);
   gl.shaderSource(s, src);
@@ -64,10 +158,9 @@ function mkShader(type, src) {
     throw new Error('Shader error: ' + gl.getShaderInfoLog(s));
   return s;
 }
-
 function mkProg(vsSrc, fsSrc) {
   const p = gl.createProgram();
-  gl.attachShader(p, mkShader(gl.VERTEX_SHADER,   vsSrc));
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vsSrc));
   gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fsSrc));
   gl.linkProgram(p);
   if (!gl.getProgramParameter(p, gl.LINK_STATUS))
@@ -75,23 +168,56 @@ function mkProg(vsSrc, fsSrc) {
   return p;
 }
 
-// ── Shader sources ─────────────────────────────────────────────────────────
+// ── Shaders ────────────────────────────────────────────────────────────────
 
-// Ground: procedural checkerboard from world-space position
+// Ground: checkerboard grass + 2 painted runways + fog
 const GROUND_VS = `
   attribute vec3 aPos;
   uniform mat4 uMVP;
+  uniform vec3 uCam;
   varying vec3 vWP;
+  varying float vDistCamSq;
   void main() {
     gl_Position = uMVP * vec4(aPos, 1.0);
     vWP = aPos;
+    vec3 d = aPos - uCam;
+    vDistCamSq = d.x*d.x + d.z*d.z;
   }`;
 const GROUND_FS = `
-  precision mediump float;
+  precision highp float;
   varying vec3 vWP;
+  varying float vDistCamSq;
+  uniform float uFog;
+  uniform vec3 uFogColor;
+  bool onRunway(vec3 p, vec3 c, float rot, float hw, float hl) {
+    float dx = p.x - c.x, dz = p.z - c.z;
+    float ca = cos(rot), sa = sin(rot);
+    float lx =  ca*dx + sa*dz;
+    float lz = -sa*dx + ca*dz;
+    return abs(lx) < hw && abs(lz) < hl;
+  }
+  bool centreLine(vec3 p, vec3 c, float rot, float hl) {
+    float dx = p.x - c.x, dz = p.z - c.z;
+    float ca = cos(rot), sa = sin(rot);
+    float lx =  ca*dx + sa*dz;
+    float lz = -sa*dx + ca*dz;
+    return abs(lx) < 4.0 && abs(lz) < hl && mod(lz, 80.0) < 40.0;
+  }
   void main() {
-    float c = mod(floor(vWP.x / 60.0) + floor(vWP.z / 60.0), 2.0);
-    vec3 col = c < 1.0 ? vec3(0.20, 0.50, 0.20) : vec3(0.28, 0.60, 0.28);
+    float c = mod(floor(vWP.x/60.0) + floor(vWP.z/60.0), 2.0);
+    vec3 col = c < 1.0 ? vec3(0.20,0.50,0.20) : vec3(0.28,0.60,0.28);
+    if (onRunway(vWP, vec3(0.0,0.0,0.0), 0.0, 35.0, 400.0)) {
+      col = vec3(0.16,0.17,0.20);
+      if (centreLine(vWP, vec3(0.0,0.0,0.0), 0.0, 380.0)) col = vec3(0.92,0.92,0.92);
+    }
+    if (onRunway(vWP, vec3(2400.0,0.0,1800.0), 1.047, 35.0, 400.0)) {
+      col = vec3(0.16,0.17,0.20);
+      if (centreLine(vWP, vec3(2400.0,0.0,1800.0), 1.047, 380.0)) col = vec3(0.92,0.92,0.92);
+    }
+    if (uFog > 0.5) {
+      float fm = clamp(vDistCamSq / 4000000.0, 0.0, 1.0);
+      col = mix(col, uFogColor, fm);
+    }
     gl_FragColor = vec4(col, 1.0);
   }`;
 
@@ -110,65 +236,201 @@ const PLANE_FS = `
   varying vec3 vCol;
   void main() { gl_FragColor = vec4(vCol, 1.0); }`;
 
+// Explosion particles: quads that drift and fade
+const PART_VS = `
+  attribute vec3 aPos;
+  attribute float aAlpha;
+  uniform mat4 uMVP;
+  varying float vAlpha;
+  void main() {
+    gl_Position = uMVP * vec4(aPos, 1.0);
+    gl_PointSize = 8.0;
+    vAlpha = aAlpha;
+  }`;
+const PART_FS = `
+  precision mediump float;
+  varying float vAlpha;
+  void main() {
+    gl_FragColor = vec4(1.0, 0.45, 0.05, vAlpha);
+  }`;
+
+// Cloud billboards: soft alpha blobs
+const CLOUD_VS = `
+  attribute vec3 aPos;
+  attribute vec2 aUV;
+  uniform mat4 uMVP;
+  varying vec2 vUV;
+  void main() {
+    gl_Position = uMVP * vec4(aPos, 1.0);
+    vUV = aUV;
+  }`;
+const CLOUD_FS = `
+  precision mediump float;
+  varying vec2 vUV;
+  uniform float uFog;
+  uniform vec3 uFogColor;
+  void main() {
+    float d = distance(vUV, vec2(0.5));
+    float a = smoothstep(0.5, 0.18, d);
+    vec3 c = vec3(0.97,0.99,1.0);
+    if (uFog > 0.5) c = mix(c, uFogColor, 0.7);
+    gl_FragColor = vec4(c, a * 0.85);
+  }`;
+
 const groundProg = mkProg(GROUND_VS, GROUND_FS);
 const planeProg  = mkProg(PLANE_VS,  PLANE_FS);
+const partProg   = mkProg(PART_VS,   PART_FS);
+const cloudProg  = mkProg(CLOUD_VS,  CLOUD_FS);
 
 // ── Ground buffer ──────────────────────────────────────────────────────────
-// One huge quad; checkerboard computed in fragment shader.
 const groundBuf = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, groundBuf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-  -30000, 0, -30000,   30000, 0, -30000,   30000, 0,  30000,
-  -30000, 0, -30000,   30000, 0,  30000,  -30000, 0,  30000,
+  -30000,0,-30000, 30000,0,-30000,  30000,0, 30000,
+  -30000,0,-30000, 30000,0, 30000, -30000,0, 30000,
 ]), gl.STATIC_DRAW);
 
 // ── Plane geometry ─────────────────────────────────────────────────────────
-// Convention: nose = +Z, up = +Y, right = +X (all in local space).
-
-function addBox(arr, x0, y0, z0, x1, y1, z1, r, g, b) {
-  // 6 faces × 2 triangles × 3 vertices = 36 vertices per box.
+// Convention: nose = +Z, up = +Y, right = +X (local space).
+function addBox(arr, x0,y0,z0, x1,y1,z1, r,g,b) {
   const faces = [
-    [x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y0,z1, x1,y1,z1, x0,y1,z1], // +Z face
-    [x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y0,z0, x0,y1,z0, x1,y1,z0], // -Z face
-    [x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y0,z0, x0,y1,z1, x0,y1,z0], // -X face
-    [x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y0,z1, x1,y1,z0, x1,y1,z1], // +X face
-    [x0,y1,z1, x1,y1,z1, x1,y1,z0, x0,y1,z1, x1,y1,z0, x0,y1,z0], // +Y face
-    [x0,y0,z0, x1,y0,z0, x1,y0,z1, x0,y0,z0, x1,y0,z1, x0,y0,z1], // -Y face
+    [x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y0,z1, x1,y1,z1, x0,y1,z1],
+    [x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y0,z0, x0,y1,z0, x1,y1,z0],
+    [x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y0,z0, x0,y1,z1, x0,y1,z0],
+    [x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y0,z1, x1,y1,z0, x1,y1,z1],
+    [x0,y1,z1, x1,y1,z1, x1,y1,z0, x0,y1,z1, x1,y1,z0, x0,y1,z0],
+    [x0,y0,z0, x1,y0,z0, x1,y0,z1, x0,y0,z0, x1,y0,z1, x0,y0,z1],
   ];
-  for (const face of faces) {
-    for (let i = 0; i < face.length; i += 3) {
-      arr.push(face[i], face[i+1], face[i+2], r, g, b);
-    }
-  }
+  for (const face of faces)
+    for (let i = 0; i < face.length; i += 3)
+      arr.push(face[i],face[i+1],face[i+2], r,g,b);
 }
-
 const planeVerts = [];
-addBox(planeVerts, -0.3, -0.3, -2.2,  0.3,  0.3,  2.2,  0.76, 0.76, 0.82); // fuselage
-addBox(planeVerts, -3.5, -0.1, -0.6,  3.5,  0.1,  0.6,  0.70, 0.72, 0.78); // main wings
-addBox(planeVerts, -1.4, -0.07,-2.05, 1.4,  0.07,-1.50, 0.68, 0.70, 0.76); // horizontal tail
-addBox(planeVerts, -0.06, 0.05,-2.1,  0.06, 0.90,-1.5,  0.64, 0.67, 0.74); // vertical tail
-addBox(planeVerts, -0.22, 0.28, 0.2,  0.22, 0.62,  1.0,  0.33, 0.55, 0.78); // canopy
-
+addBox(planeVerts, -0.3,-0.3,-2.2,  0.3, 0.3, 2.2,  0.78,0.78,0.84); // fuselage
+addBox(planeVerts, -3.6,-0.1,-0.6,  3.6, 0.1, 0.6,  0.72,0.74,0.80); // wings
+addBox(planeVerts, -1.4,-0.07,-2.05, 1.4,0.07,-1.50, 0.70,0.72,0.78); // h-tail
+addBox(planeVerts, -0.06,0.05,-2.1, 0.06,0.92,-1.5,  0.66,0.69,0.76); // v-tail
+addBox(planeVerts, -0.22,0.28, 0.2, 0.22,0.62, 1.0,  0.33,0.58,0.82); // canopy
+addBox(planeVerts, -0.18,-0.5,-1.0, 0.18,-0.32,0.8,  0.40,0.42,0.46); // belly
 const planeBuf = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, planeBuf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(planeVerts), gl.STATIC_DRAW);
 const planeVertCount = planeVerts.length / 6;
 
-// ── State ──────────────────────────────────────────────────────────────────
+// ── Clouds ─────────────────────────────────────────────────────────────────
+const NUM_CLOUDS = 90;
+const clouds = [];
+for (let i = 0; i < NUM_CLOUDS; i++) {
+  clouds.push({
+    x: (Math.random() - 0.5) * 8000,
+    y: 350 + Math.random() * 850,
+    z: (Math.random() - 0.5) * 8000,
+    s: 120 + Math.random() * 220,
+  });
+}
+const cloudQuadV = new Float32Array([
+  -1,-1,0, 0,0,  1,-1,0, 1,0,  1,1,0, 1,1,
+  -1,-1,0, 0,0,  1,1,0, 1,1,  -1,1,0, 0,1,
+]);
+const cloudBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, cloudBuf);
+gl.bufferData(gl.ARRAY_BUFFER, cloudQuadV, gl.STATIC_DRAW);
 
-const state = {
-  pos:      vec3.fromValues(0, 150, 0),
-  q:        quat.create(),   // identity: level, nose pointing +Z
-  speed:    80,              // m/s
-  throttle: 0.55,
-};
+// ── Explosion particles ────────────────────────────────────────────────────
+const MAX_PARTS = 120;
+let particles = [];
+let partBuf = null;
+
+function spawnExplosion(pos) {
+  particles = [];
+  for (let i = 0; i < MAX_PARTS; i++) {
+    const speed = 15 + Math.random() * 55;
+    const theta = Math.random() * Math.PI * 2;
+    const phi   = Math.random() * Math.PI;
+    particles.push({
+      x: pos[0], y: pos[1], z: pos[2],
+      vx: Math.sin(phi)*Math.cos(theta)*speed,
+      vy: Math.abs(Math.cos(phi))*speed * 0.8 + 5,
+      vz: Math.sin(phi)*Math.sin(theta)*speed,
+      life: 1.0,
+      decay: 0.6 + Math.random() * 0.8,
+    });
+  }
+  if (!partBuf) partBuf = gl.createBuffer();
+}
+
+function updateParticles(dt) {
+  const g = 28;
+  for (const p of particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.z += p.vz * dt;
+    p.vy -= g * dt;
+    p.life -= p.decay * dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+}
+
+// ── State ──────────────────────────────────────────────────────────────────
+const RUNWAY1 = { x: 0,    z: 0    };
+const RUNWAY2 = { x: 2400, z: 1800 };
+
+function initState() {
+  return {
+    pos:      vec3.fromValues(0, 250, -1500),
+    q:        quat.create(),
+    speed:    140,
+    throttle: 0.55,
+    wind:     false, windDir: Math.random() * Math.PI * 2,
+    fog:      false,
+    crashed:  false,
+    touchdownLatched: false,
+  };
+}
+let state = initState();
+let lastY = state.pos[1];
+
+// Cockpit / chase view toggle
+let cockpitView = false;
 
 const keys = {};
-window.addEventListener('keydown', e => { keys[e.key] = true;  e.preventDefault(); }, { passive: false });
-window.addEventListener('keyup',   e => { keys[e.key] = false; });
+window.addEventListener('keydown', e => {
+  if (!keys[e.key]) {
+    if (e.key === 'r' || e.key === 'R') {
+      state.wind = !state.wind;
+      if (state.wind) state.windDir = Math.random() * Math.PI * 2;
+      flash(state.wind ? 'Wind on' : 'Wind off');
+    } else if (e.key === 'f' || e.key === 'F') {
+      state.fog = !state.fog;
+      flash(state.fog ? 'Fog on' : 'Fog off');
+    } else if (e.key === 'c' || e.key === 'C') {
+      cockpitView = !cockpitView;
+      document.getElementById('cockpit-frame').classList.toggle('active', cockpitView);
+      document.getElementById('instr-wrap').classList.toggle('active', cockpitView);
+      document.getElementById('viewMode').textContent = cockpitView ? 'COCKPIT' : 'CHASE';
+      flash(cockpitView ? 'Cockpit view' : 'Chase cam');
+    } else if (e.key === ' ') {
+      state = initState();
+      lastY = state.pos[1];
+      particles = [];
+      flash('Reset');
+    }
+  }
+  keys[e.key] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+}, { passive: false });
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// ── Flash message ──────────────────────────────────────────────────────────
+const msgEl = document.getElementById('message');
+let msgTimer = 0;
+function flash(text) {
+  msgEl.textContent = text;
+  msgEl.classList.add('show');
+  msgTimer = 1.4;
+}
 
 // ── Matrices ───────────────────────────────────────────────────────────────
-
 const proj   = mat4.create();
 const view   = mat4.create();
 const mvp    = mat4.create();
@@ -183,98 +445,561 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// ── Physics ────────────────────────────────────────────────────────────────
+// ── Physics constants ──────────────────────────────────────────────────────
+const PITCH_RATE    = 1.1;    // rad/s
+const ROLL_RATE     = 1.4;
+const YAW_RATE      = 0.7;
+const GRAVITY       = 9.8;    // m/s²
+const THRUST_MAX    = 42;     // m/s² at full throttle
+const DRAG_COEF     = 0.0007;
+const STALL_SPEED   = 28;     // m/s
+const PITCH_TO_SPD  = 14;     // energy exchange climbing/diving
+const WIND_SPEED    = 18;
+const GROUND_Y      = 4;
+const CRASH_VY      = -8;     // m/s descent rate = crash threshold
+const ROLL_DAMP     = 0.28;   // gentle auto-level when no roll input
+const STALL_PITCH   = 1.2;    // rad/s auto nose-down in stall
 
-const MAX_SPEED  = 220;   // m/s at full throttle
-const MIN_GLIDE  = 25;    // m/s (stall speed; below this plane sinks fast)
-const PITCH_RATE = 1.1;   // rad/s
-const ROLL_RATE  = 1.4;
-const YAW_RATE   = 0.7;
-const GRAVITY    = 5.0;   // m/s² (gentler than real, keeps it fun)
-
+// ── Physics update ─────────────────────────────────────────────────────────
 function update(dt) {
+  if (state.crashed) {
+    updateParticles(dt);
+    return;
+  }
+
   // Throttle
-  if (keys['w'] || keys['W']) state.throttle = Math.min(1.0, state.throttle + 0.35 * dt);
-  if (keys['s'] || keys['S']) state.throttle = Math.max(0.0, state.throttle - 0.35 * dt);
+  if (keys['w'] || keys['W']) state.throttle = Math.min(1.0, state.throttle + 0.5 * dt);
+  if (keys['s'] || keys['S']) state.throttle = Math.max(0.0, state.throttle - 0.5 * dt);
 
-  // Target airspeed from throttle
-  const target = MIN_GLIDE + state.throttle * (MAX_SPEED - MIN_GLIDE);
-  state.speed  = state.speed + (target - state.speed) * Math.min(1, 1.2 * dt);
+  // ── Pitch: up arrow = nose up, down arrow = nose down ──────────────────
+  // quat.rotateX positive → nose DOWN (right-hand rule around +X takes +Z toward -Y)
+  // So: nose UP = negative rotation, nose DOWN = positive rotation.
+  if (keys['ArrowUp'])   quat.rotateX(state.q, state.q, -PITCH_RATE * dt); // nose UP
+  if (keys['ArrowDown']) quat.rotateX(state.q, state.q,  PITCH_RATE * dt); // nose DOWN
 
-  // Rotations — all in the plane's local (body) frame
-  if (keys['ArrowUp'])   quat.rotateX(state.q, state.q,  PITCH_RATE * dt);  // pitch up
-  if (keys['ArrowDown']) quat.rotateX(state.q, state.q, -PITCH_RATE * dt);  // pitch down
-  if (keys['ArrowLeft']) quat.rotateZ(state.q, state.q,  ROLL_RATE  * dt);  // roll left
-  if (keys['ArrowRight'])quat.rotateZ(state.q, state.q, -ROLL_RATE  * dt);  // roll right
-  if (keys['q'] || keys['Q']) quat.rotateY(state.q, state.q,  YAW_RATE * dt); // yaw left
-  if (keys['e'] || keys['E']) quat.rotateY(state.q, state.q, -YAW_RATE * dt); // yaw right
+  // ── Coordinated turns (roll + yaw together) ────────────────────────────
+  if (keys['ArrowLeft']) {
+    quat.rotateZ(state.q, state.q,  ROLL_RATE * dt);      // bank left
+    quat.rotateY(state.q, state.q, -YAW_RATE * 0.9 * dt); // yaw left
+  }
+  if (keys['ArrowRight']) {
+    quat.rotateZ(state.q, state.q, -ROLL_RATE * dt);      // bank right
+    quat.rotateY(state.q, state.q,  YAW_RATE * 0.9 * dt); // yaw right
+  }
+
+  // ── Pure rudder ────────────────────────────────────────────────────────
+  if (keys['q'] || keys['Q']) quat.rotateY(state.q, state.q, -YAW_RATE * dt);
+  if (keys['e'] || keys['E']) quat.rotateY(state.q, state.q,  YAW_RATE * dt);
+
+  // ── Auto roll-level: gentle tendency toward wings-level ───────────────
+  // Reduces pilot workload on straight-and-level flight.
+  const noRollInput = !keys['ArrowLeft'] && !keys['ArrowRight'] && !keys['q'] && !keys['Q'] && !keys['e'] && !keys['E'];
+  if (noRollInput) {
+    const rightV = vec3.transformQuat(vec3.create(), [1, 0, 0], state.q);
+    // rightV[1] > 0 = right wing up (left bank) → roll right (negative Z)
+    // rightV[1] < 0 = right wing down (right bank) → roll left (positive Z)
+    quat.rotateZ(state.q, state.q, -rightV[1] * ROLL_DAMP * dt);
+  }
 
   quat.normalize(state.q, state.q);
 
   // Forward direction in world space
   const fwd = vec3.transformQuat(vec3.create(), [0, 0, 1], state.q);
 
-  // Move along forward vector
+  // ── Speed: thrust - drag + pitch energy exchange ───────────────────────
+  const thrust     = state.throttle * THRUST_MAX;
+  const drag       = DRAG_COEF * state.speed * state.speed;
+  const pitchEnergy = -fwd[1] * PITCH_TO_SPD; // dive → gain speed
+  state.speed = Math.max(0, state.speed + (thrust - drag + pitchEnergy) * dt);
+
+  // ── Stall: auto nose-down + increased sink ─────────────────────────────
+  if (state.speed < STALL_SPEED) {
+    const stallFrac = 1 - state.speed / STALL_SPEED; // 0 at stall speed, 1 at zero speed
+    // Nose pitches down automatically (that's what a stall does aerodynamically)
+    quat.rotateX(state.q, state.q, stallFrac * STALL_PITCH * dt); // nose DOWN = positive rotation
+    quat.normalize(state.q, state.q);
+  }
+
+  // ── Translation ────────────────────────────────────────────────────────
   state.pos[0] += fwd[0] * state.speed * dt;
   state.pos[1] += fwd[1] * state.speed * dt;
   state.pos[2] += fwd[2] * state.speed * dt;
 
-  // Gravity — reduced by speed (more speed = more lift)
-  const liftFactor = Math.min(1, state.speed / 80);
-  state.pos[1] -= GRAVITY * (1 - liftFactor * 0.8) * dt;
+  // Wind drift
+  if (state.wind) {
+    state.pos[0] += Math.cos(state.windDir) * WIND_SPEED * dt;
+    state.pos[2] += Math.sin(state.windDir) * WIND_SPEED * dt;
+  }
 
-  // Ground floor
-  if (state.pos[1] < 4) state.pos[1] = 4;
+  // ── Lift vs gravity ────────────────────────────────────────────────────
+  let liftFrac;
+  if (state.speed >= STALL_SPEED) {
+    liftFrac = 1.0; // full lift above stall
+  } else {
+    liftFrac = (state.speed / STALL_SPEED) * 0.3; // lift collapses below stall
+  }
+  state.pos[1] -= GRAVITY * (1 - liftFrac) * dt;
+
+  // ── Ground contact: touchdown or crash ────────────────────────────────
+  if (state.pos[1] < GROUND_Y) {
+    const vy = (state.pos[1] - lastY) / dt;
+    const onR1 = Math.abs(state.pos[0]) < 35 && Math.abs(state.pos[2]) < 400;
+    const dx = state.pos[0] - RUNWAY2.x, dz = state.pos[2] - RUNWAY2.z;
+    const ca = Math.cos(1.047), sa = Math.sin(1.047);
+    const onR2 = Math.abs(ca*dx + sa*dz) < 35 && Math.abs(-sa*dx + ca*dz) < 400;
+    const onRunway = onR1 || onR2;
+    const up = vec3.transformQuat(vec3.create(), [0, 1, 0], state.q);
+    const softV  = vy > CRASH_VY;
+    const level  = up[1] > 0.85;
+    state.pos[1] = GROUND_Y;
+    if (onRunway && softV && level) {
+      if (!state.touchdownLatched) {
+        flash('Touchdown! 🛬');
+        state.touchdownLatched = true;
+      }
+    } else {
+      state.crashed = true;
+      const why = !onRunway ? 'off-runway' : !softV ? 'too steep' : 'wings not level';
+      flash('💥 Crashed – ' + why + '\nPress Space to reset');
+      msgTimer = 5;
+      spawnExplosion(state.pos);
+    }
+  } else {
+    state.touchdownLatched = false;
+  }
+
+  lastY = state.pos[1];
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
-
 function render() {
-  gl.clearColor(0.44, 0.67, 0.94, 1);
+  const fogColor = state.fog ? [0.78, 0.82, 0.85] : [0.44, 0.67, 0.94];
+  gl.clearColor(fogColor[0], fogColor[1], fogColor[2], 1);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST);
 
-  // Camera: positioned behind and above the plane in its local frame
-  const camOff = vec3.transformQuat(vec3.create(), [0, 5, -16], state.q);
-  const camPos  = vec3.add(vec3.create(), state.pos, camOff);
-  // Look a little ahead of centre mass
-  const ahead   = vec3.transformQuat(vec3.create(), [0, 0, 3], state.q);
-  const lookTgt = vec3.add(vec3.create(), state.pos, ahead);
-  mat4.lookAt(view, camPos, lookTgt, [0, 1, 0]);
+  // ── Camera ──
+  let camPos, lookTgt, upVec;
+  if (cockpitView) {
+    // First-person cockpit camera: eye inside the canopy, roll with the plane
+    const planeUp  = vec3.transformQuat(vec3.create(), [0, 1, 0], state.q);
+    const eyeOff   = vec3.transformQuat(vec3.create(), [0, 1.1, 1.3], state.q);
+    camPos  = vec3.add(vec3.create(), state.pos, eyeOff);
+    const fwdOff = vec3.transformQuat(vec3.create(), [0, 1.1, 200], state.q);
+    lookTgt = vec3.add(vec3.create(), state.pos, fwdOff);
+    upVec   = Array.from(planeUp);
+  } else {
+    // Chase camera: behind and above, world-up
+    const camOff = vec3.transformQuat(vec3.create(), [0, 5, -16], state.q);
+    camPos  = vec3.add(vec3.create(), state.pos, camOff);
+    const ahead = vec3.transformQuat(vec3.create(), [0, 0, 3], state.q);
+    lookTgt = vec3.add(vec3.create(), state.pos, ahead);
+    upVec   = [0, 1, 0];
+  }
+  mat4.lookAt(view, camPos, lookTgt, upVec);
 
   // ── Ground ──
   gl.useProgram(groundProg);
-  mat4.multiply(mvp, proj, view);  // model = identity (ground stays put)
-  gl.uniformMatrix4fv(gl.getUniformLocation(groundProg, 'uMVP'), false, mvp);
+  mat4.multiply(mvp, proj, view);
+  gl.uniformMatrix4fv(gl.getUniformLocation(groundProg, 'uMVP'),      false, mvp);
+  gl.uniform3fv(      gl.getUniformLocation(groundProg, 'uCam'),      camPos);
+  gl.uniform1f(       gl.getUniformLocation(groundProg, 'uFog'),      state.fog ? 1.0 : 0.0);
+  gl.uniform3fv(      gl.getUniformLocation(groundProg, 'uFogColor'), fogColor);
   gl.bindBuffer(gl.ARRAY_BUFFER, groundBuf);
-  const gPosLoc = gl.getAttribLocation(groundProg, 'aPos');
-  gl.enableVertexAttribArray(gPosLoc);
-  gl.vertexAttribPointer(gPosLoc, 3, gl.FLOAT, false, 12, 0);
+  const gPos = gl.getAttribLocation(groundProg, 'aPos');
+  gl.enableVertexAttribArray(gPos);
+  gl.vertexAttribPointer(gPos, 3, gl.FLOAT, false, 12, 0);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-  // ── Plane ──
-  gl.useProgram(planeProg);
-  mat4.fromRotationTranslation(modelM, state.q, state.pos);
-  mat4.scale(modelM, modelM, [2.2, 2.2, 2.2]);  // scale up for visibility
-  mat4.multiply(mvp, proj, view);
-  mat4.multiply(mvp, mvp, modelM);
-  gl.uniformMatrix4fv(gl.getUniformLocation(planeProg, 'uMVP'), false, mvp);
-  gl.bindBuffer(gl.ARRAY_BUFFER, planeBuf);
-  const pPosLoc = gl.getAttribLocation(planeProg, 'aPos');
-  const pColLoc = gl.getAttribLocation(planeProg, 'aCol');
-  gl.enableVertexAttribArray(pPosLoc);
-  gl.enableVertexAttribArray(pColLoc);
-  gl.vertexAttribPointer(pPosLoc, 3, gl.FLOAT, false, 24,  0);
-  gl.vertexAttribPointer(pColLoc, 3, gl.FLOAT, false, 24, 12);
-  gl.drawArrays(gl.TRIANGLES, 0, planeVertCount);
+  // ── Clouds ──
+  gl.useProgram(cloudProg);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.depthMask(false);
+  gl.bindBuffer(gl.ARRAY_BUFFER, cloudBuf);
+  const cPos = gl.getAttribLocation(cloudProg, 'aPos');
+  const cUV  = gl.getAttribLocation(cloudProg, 'aUV');
+  gl.enableVertexAttribArray(cPos);
+  gl.enableVertexAttribArray(cUV);
+  gl.vertexAttribPointer(cPos, 3, gl.FLOAT, false, 20, 0);
+  gl.vertexAttribPointer(cUV,  2, gl.FLOAT, false, 20, 12);
+  gl.uniform1f(gl.getUniformLocation(cloudProg, 'uFog'),      state.fog ? 1.0 : 0.0);
+  gl.uniform3fv(gl.getUniformLocation(cloudProg, 'uFogColor'), fogColor);
+  for (const cl of clouds) {
+    mat4.identity(modelM);
+    mat4.translate(modelM, modelM, [cl.x, cl.y, cl.z]);
+    const dx = camPos[0] - cl.x, dz = camPos[2] - cl.z;
+    mat4.rotateY(modelM, modelM, Math.atan2(dx, dz));
+    mat4.scale(modelM, modelM, [cl.s, cl.s * 0.55, 1]);
+    mat4.multiply(mvp, proj, view);
+    mat4.multiply(mvp, mvp, modelM);
+    gl.uniformMatrix4fv(gl.getUniformLocation(cloudProg, 'uMVP'), false, mvp);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+  gl.depthMask(true);
+  gl.disable(gl.BLEND);
+
+  // ── Plane (skip in cockpit view — you're inside it) ──
+  if (!cockpitView) {
+    gl.useProgram(planeProg);
+    mat4.fromRotationTranslation(modelM, state.q, state.pos);
+    mat4.scale(modelM, modelM, [2.2, 2.2, 2.2]);
+    mat4.multiply(mvp, proj, view);
+    mat4.multiply(mvp, mvp, modelM);
+    gl.uniformMatrix4fv(gl.getUniformLocation(planeProg, 'uMVP'), false, mvp);
+    gl.bindBuffer(gl.ARRAY_BUFFER, planeBuf);
+    const pPos = gl.getAttribLocation(planeProg, 'aPos');
+    const pCol = gl.getAttribLocation(planeProg, 'aCol');
+    gl.enableVertexAttribArray(pPos);
+    gl.enableVertexAttribArray(pCol);
+    gl.vertexAttribPointer(pPos, 3, gl.FLOAT, false, 24,  0);
+    gl.vertexAttribPointer(pCol, 3, gl.FLOAT, false, 24, 12);
+    gl.drawArrays(gl.TRIANGLES, 0, planeVertCount);
+  }
+
+  // ── Explosion particles ──
+  if (particles.length > 0) {
+    const pdata = new Float32Array(particles.length * 4);
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      pdata[i*4]   = p.x;
+      pdata[i*4+1] = p.y;
+      pdata[i*4+2] = p.z;
+      pdata[i*4+3] = Math.max(0, p.life);
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, partBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, pdata, gl.DYNAMIC_DRAW);
+    gl.useProgram(partProg);
+    mat4.multiply(mvp, proj, view);
+    gl.uniformMatrix4fv(gl.getUniformLocation(partProg, 'uMVP'), false, mvp);
+    const ppPos = gl.getAttribLocation(partProg, 'aPos');
+    const ppAlp = gl.getAttribLocation(partProg, 'aAlpha');
+    gl.enableVertexAttribArray(ppPos);
+    gl.enableVertexAttribArray(ppAlp);
+    gl.vertexAttribPointer(ppPos, 3, gl.FLOAT, false, 16, 0);
+    gl.vertexAttribPointer(ppAlp, 1, gl.FLOAT, false, 16, 12);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    gl.depthMask(false);
+    gl.drawArrays(gl.POINTS, 0, particles.length);
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+  }
 }
 
-// ── HUD ────────────────────────────────────────────────────────────────────
+// ── 2D Instrument Panel ────────────────────────────────────────────────────
+const instrCanvas = document.getElementById('instr');
+const ictx = instrCanvas.getContext('2d');
+const IW = instrCanvas.width;   // 600
+const IH = instrCanvas.height;  // 188
 
-const altEl = document.getElementById('alt');
-const spdEl = document.getElementById('spd');
-const hdgEl = document.getElementById('hdg');
-const thrEl = document.getElementById('thr');
+// Instrument positions: ASI | ATT | ALT | HDG
+const INSTR = [
+  { label: 'SPD', cx: 75,  cy: 94, r: 66, type: 'asi'  },
+  { label: 'ATT', cx: 225, cy: 94, r: 80, type: 'ati'  },
+  { label: 'ALT', cx: 375, cy: 94, r: 66, type: 'alt'  },
+  { label: 'HDG', cx: 525, cy: 94, r: 66, type: 'hdg'  },
+];
+
+function drawInstrPanel() {
+  ictx.clearRect(0, 0, IW, IH);
+  if (!cockpitView) return;
+
+  const fwd   = vec3.transformQuat(vec3.create(), [0, 0, 1], state.q);
+  const rightV= vec3.transformQuat(vec3.create(), [1, 0, 0], state.q);
+  const upV   = vec3.transformQuat(vec3.create(), [0, 1, 0], state.q);
+
+  // Pitch: positive = nose up (fwd[1] > 0 → nose above horizon)
+  const pitch = Math.asin(Math.max(-1, Math.min(1, fwd[1])));
+  // Roll: rightV[1] > 0 = right wing up = left bank; rightV[1] < 0 = right bank
+  const roll  = -Math.atan2(rightV[1], upV[1]);
+  const hdg   = ((Math.atan2(fwd[0], fwd[2]) * 180 / Math.PI) + 360) % 360;
+
+  for (const ins of INSTR) {
+    if      (ins.type === 'asi') drawASI(ins.cx, ins.cy, ins.r);
+    else if (ins.type === 'ati') drawATI(ins.cx, ins.cy, ins.r, pitch, roll);
+    else if (ins.type === 'alt') drawALT(ins.cx, ins.cy, ins.r);
+    else if (ins.type === 'hdg') drawHDG(ins.cx, ins.cy, ins.r, hdg);
+  }
+}
+
+// ── Instrument: Airspeed Indicator ────────────────────────────────────────
+function drawASI(cx, cy, r) {
+  const spd = state.speed;
+  const frac = Math.max(0, Math.min(1, spd / 220));
+  const stalling = spd < STALL_SPEED;
+  const warn     = spd < STALL_SPEED * 1.3;
+
+  instrCircle(cx, cy, r);
+
+  // Arc track
+  const sa = 2.35, sweep = 4.71; // ~270° from bottom-left
+  arcTrack(cx, cy, r - 12, sa, sweep, '#333', 8);
+  // Green zone: stall to max
+  const stallFrac = STALL_SPEED / 220;
+  arcTrack(cx, cy, r - 12, sa + stallFrac * sweep, sweep * (1 - stallFrac), '#2a2', 8);
+  // Red zone: below stall
+  arcTrack(cx, cy, r - 12, sa, sweep * stallFrac, '#c22', 8);
+  // Current speed needle arc
+  const needleCol = stalling ? '#f44' : warn ? '#fa4' : '#0f0';
+  arcTrack(cx, cy, r - 12, sa, frac * sweep, needleCol, 4);
+
+  // Speed readout
+  ictx.save();
+  ictx.fillStyle = stalling ? '#f44' : '#eee';
+  ictx.font = `bold ${Math.round(r * 0.35)}px monospace`;
+  ictx.textAlign = 'center';
+  ictx.textBaseline = 'middle';
+  ictx.fillText(Math.round(spd), cx, cy - r * 0.08);
+  ictx.fillStyle = stalling ? '#f66' : 'rgba(255,255,255,0.45)';
+  ictx.font = `${Math.round(r * 0.17)}px monospace`;
+  ictx.fillText('m/s', cx, cy + r * 0.28);
+  ictx.fillStyle = 'rgba(255,255,255,0.6)';
+  ictx.font = `${Math.round(r * 0.18)}px monospace`;
+  ictx.fillText('SPD', cx, cy - r * 0.56);
+  if (stalling) {
+    ictx.fillStyle = '#f44';
+    ictx.font = `bold ${Math.round(r * 0.16)}px monospace`;
+    ictx.fillText('STALL', cx, cy + r * 0.56);
+  }
+  ictx.restore();
+}
+
+// ── Instrument: Attitude Indicator (artificial horizon) ───────────────────
+function drawATI(cx, cy, r, pitchRad, rollRad) {
+  ictx.save();
+  // Clip to circle
+  ictx.beginPath();
+  ictx.arc(cx, cy, r - 2, 0, Math.PI * 2);
+  ictx.clip();
+
+  // Rotate to show roll
+  ictx.save();
+  ictx.translate(cx, cy);
+  ictx.rotate(rollRad);
+
+  // pitch offset in pixels: 45° = r pixels
+  const pitchPx = (pitchRad / (Math.PI / 4)) * r;
+
+  // Sky
+  ictx.fillStyle = '#2a6fb5';
+  ictx.fillRect(-r, -r * 2, r * 2, r * 2 + pitchPx);
+  // Earth
+  ictx.fillStyle = '#7a4a22';
+  ictx.fillRect(-r, pitchPx, r * 2, r * 2);
+
+  // Horizon line
+  ictx.strokeStyle = '#fff';
+  ictx.lineWidth = 2;
+  ictx.beginPath();
+  ictx.moveTo(-r, pitchPx);
+  ictx.lineTo(r, pitchPx);
+  ictx.stroke();
+
+  // Pitch ladder: lines every 10°
+  for (let deg = -40; deg <= 40; deg += 10) {
+    if (deg === 0) continue;
+    const y   = pitchPx - deg * (r / 45);
+    const len = deg % 20 === 0 ? r * 0.4 : r * 0.24;
+    ictx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ictx.lineWidth = 1;
+    ictx.beginPath();
+    ictx.moveTo(-len, y);
+    ictx.lineTo(len, y);
+    ictx.stroke();
+    if (deg % 20 === 0) {
+      ictx.fillStyle = '#fff';
+      ictx.font = `${Math.round(r * 0.13)}px monospace`;
+      ictx.textAlign = 'right';
+      ictx.textBaseline = 'middle';
+      ictx.fillText(Math.abs(deg), -len - 3, y);
+      ictx.textAlign = 'left';
+      ictx.fillText(Math.abs(deg), len + 3, y);
+    }
+  }
+  ictx.restore(); // undo roll rotation
+
+  // Fixed aircraft reference wings (yellow, doesn't rotate)
+  const wl = r * 0.46, ws = r * 0.14;
+  ictx.strokeStyle = '#ff0';
+  ictx.lineWidth = 3;
+  ictx.beginPath();
+  // Left wing
+  ictx.moveTo(cx - wl, cy);
+  ictx.lineTo(cx - wl + ws, cy);
+  ictx.lineTo(cx - wl + ws, cy + r * 0.1);
+  // Right wing
+  ictx.moveTo(cx + wl, cy);
+  ictx.lineTo(cx + wl - ws, cy);
+  ictx.lineTo(cx + wl - ws, cy + r * 0.1);
+  // Centre dot
+  ictx.moveTo(cx - r * 0.06, cy);
+  ictx.lineTo(cx + r * 0.06, cy);
+  ictx.stroke();
+
+  // Bank angle arc at top
+  ictx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ictx.lineWidth = 1;
+  ictx.beginPath();
+  ictx.arc(cx, cy, r - 10, -Math.PI + 0.5, -0.5);
+  ictx.stroke();
+  // Bank marker (triangle pointing inward at roll angle)
+  const bAngle = -Math.PI / 2 + rollRad;
+  const bx = cx + (r - 10) * Math.cos(bAngle);
+  const by = cy + (r - 10) * Math.sin(bAngle);
+  ictx.save();
+  ictx.translate(bx, by);
+  ictx.rotate(bAngle + Math.PI / 2);
+  ictx.fillStyle = '#ff0';
+  ictx.beginPath();
+  ictx.moveTo(0, 0);
+  ictx.lineTo(-5, -10);
+  ictx.lineTo(5, -10);
+  ictx.closePath();
+  ictx.fill();
+  ictx.restore();
+
+  // Bezel ring
+  ictx.restore(); // undo clip
+  instrCircle(cx, cy, r);
+
+  ictx.fillStyle = 'rgba(255,255,255,0.6)';
+  ictx.font = `${Math.round(r * 0.14)}px monospace`;
+  ictx.textAlign = 'center';
+  ictx.textBaseline = 'middle';
+  ictx.fillText('ATT', cx, cy + r + 14);
+}
+
+// ── Instrument: Altimeter ─────────────────────────────────────────────────
+function drawALT(cx, cy, r) {
+  const alt  = Math.max(0, state.pos[1]);
+  const frac = Math.min(1, alt / 4000);
+
+  instrCircle(cx, cy, r);
+
+  const sa = 2.35, sweep = 4.71;
+  arcTrack(cx, cy, r - 12, sa, sweep, '#333', 8);
+  arcTrack(cx, cy, r - 12, sa, frac * sweep, '#0af', 4);
+
+  // Needle hand
+  const angle = sa + frac * sweep;
+  ictx.save();
+  ictx.strokeStyle = '#0af';
+  ictx.lineWidth = 2.5;
+  ictx.beginPath();
+  ictx.moveTo(cx, cy);
+  ictx.lineTo(cx + (r - 16) * Math.cos(angle), cy + (r - 16) * Math.sin(angle));
+  ictx.stroke();
+  ictx.restore();
+
+  ictx.save();
+  ictx.fillStyle = '#eee';
+  ictx.font = `bold ${Math.round(r * 0.3)}px monospace`;
+  ictx.textAlign = 'center';
+  ictx.textBaseline = 'middle';
+  ictx.fillText(Math.round(alt / 10) * 10, cx, cy - r * 0.08);
+  ictx.fillStyle = 'rgba(255,255,255,0.45)';
+  ictx.font = `${Math.round(r * 0.16)}px monospace`;
+  ictx.fillText('m', cx, cy + r * 0.28);
+  ictx.fillStyle = 'rgba(255,255,255,0.6)';
+  ictx.font = `${Math.round(r * 0.18)}px monospace`;
+  ictx.fillText('ALT', cx, cy - r * 0.56);
+  ictx.restore();
+}
+
+// ── Instrument: Heading Indicator ─────────────────────────────────────────
+function drawHDG(cx, cy, r, hdg) {
+  instrCircle(cx, cy, r);
+
+  ictx.save();
+  ictx.translate(cx, cy);
+  ictx.rotate(-hdg * Math.PI / 180); // rotate compass rose
+
+  // Tick marks every 5° (major every 30°)
+  for (let i = 0; i < 72; i++) {
+    const angle = i * 5 * Math.PI / 180;
+    const isMaj = i % 6 === 0;
+    const inner = isMaj ? r - 18 : r - 12;
+    ictx.strokeStyle = isMaj ? '#fff' : 'rgba(255,255,255,0.35)';
+    ictx.lineWidth = isMaj ? 1.5 : 0.7;
+    ictx.beginPath();
+    ictx.moveTo(Math.sin(angle) * inner, -Math.cos(angle) * inner);
+    ictx.lineTo(Math.sin(angle) * (r - 5), -Math.cos(angle) * (r - 5));
+    ictx.stroke();
+  }
+
+  // Cardinal labels
+  const cards = ['N','NE','E','SE','S','SW','W','NW'];
+  for (let i = 0; i < 8; i++) {
+    const a   = i * 45 * Math.PI / 180;
+    const lr  = r - 28;
+    ictx.fillStyle = i === 0 ? '#f55' : '#ddd'; // N = red
+    ictx.font = `bold ${i % 2 === 0 ? Math.round(r*0.2) : Math.round(r*0.14)}px monospace`;
+    ictx.textAlign = 'center';
+    ictx.textBaseline = 'middle';
+    ictx.fillText(cards[i], Math.sin(a) * lr, -Math.cos(a) * lr);
+  }
+  ictx.restore();
+
+  // Fixed lubber line (top centre, yellow triangle)
+  ictx.fillStyle = '#ff0';
+  ictx.beginPath();
+  ictx.moveTo(cx, cy - r + 4);
+  ictx.lineTo(cx - 5, cy - r + 14);
+  ictx.lineTo(cx + 5, cy - r + 14);
+  ictx.closePath();
+  ictx.fill();
+
+  // Heading readout in centre
+  ictx.fillStyle = '#ff0';
+  ictx.font = `bold ${Math.round(r * 0.28)}px monospace`;
+  ictx.textAlign = 'center';
+  ictx.textBaseline = 'middle';
+  ictx.fillText(String(Math.round(hdg)).padStart(3, '0') + '°', cx, cy);
+
+  ictx.fillStyle = 'rgba(255,255,255,0.6)';
+  ictx.font = `${Math.round(r * 0.18)}px monospace`;
+  ictx.fillText('HDG', cx, cy + r * 0.42);
+}
+
+// ── Instrument helpers ─────────────────────────────────────────────────────
+function instrCircle(cx, cy, r) {
+  ictx.save();
+  ictx.beginPath();
+  ictx.arc(cx, cy, r, 0, Math.PI * 2);
+  ictx.fillStyle = '#111';
+  ictx.fill();
+  ictx.strokeStyle = '#555';
+  ictx.lineWidth = 2.5;
+  ictx.stroke();
+  ictx.restore();
+}
+
+function arcTrack(cx, cy, r, startAngle, sweep, color, width) {
+  ictx.save();
+  ictx.beginPath();
+  ictx.arc(cx, cy, r, startAngle, startAngle + sweep);
+  ictx.strokeStyle = color;
+  ictx.lineWidth = width;
+  ictx.lineCap = 'round';
+  ictx.stroke();
+  ictx.restore();
+}
+
+// ── Top-left HUD update ────────────────────────────────────────────────────
+const altEl       = document.getElementById('alt');
+const spdEl       = document.getElementById('spd');
+const hdgEl       = document.getElementById('hdg');
+const thrEl       = document.getElementById('thr');
+const windStateEl = document.getElementById('windState');
+const windDetailEl= document.getElementById('windDetail');
+const fogStateEl  = document.getElementById('fogState');
+const runwayDistEl= document.getElementById('runwayDist');
+const stallRowEl  = document.getElementById('stall-row');
+
+function compass(deg) {
+  return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg / 45) % 8];
+}
 
 function updateHUD() {
   altEl.textContent = Math.max(0, Math.round(state.pos[1]));
@@ -283,10 +1008,28 @@ function updateHUD() {
   const hdg = ((Math.atan2(fwd[0], fwd[2]) * 180 / Math.PI) + 360) % 360;
   hdgEl.textContent = String(Math.round(hdg)).padStart(3, '0');
   thrEl.textContent = Math.round(state.throttle * 100);
+
+  const stalling = state.speed < STALL_SPEED;
+  stallRowEl.style.display = stalling ? '' : 'none';
+  spdEl.className = stalling ? 'stall' : '';
+
+  if (state.wind) {
+    windStateEl.textContent = 'ON';  windStateEl.className = 'on';
+    const wd = ((state.windDir * 180 / Math.PI) + 360) % 360;
+    windDetailEl.textContent = '(' + compass(wd) + ')';
+  } else {
+    windStateEl.textContent = 'OFF'; windStateEl.className = 'off';
+    windDetailEl.textContent = '';
+  }
+  fogStateEl.textContent = state.fog ? 'ON' : 'OFF';
+  fogStateEl.className   = state.fog ? 'on' : 'off';
+
+  const d1 = Math.hypot(state.pos[0] - RUNWAY1.x, state.pos[2] - RUNWAY1.z);
+  const d2 = Math.hypot(state.pos[0] - RUNWAY2.x, state.pos[2] - RUNWAY2.z);
+  runwayDistEl.textContent = (Math.min(d1, d2) / 1000).toFixed(1) + ' km (#' + (d1 < d2 ? '1' : '2') + ')';
 }
 
 // ── Main loop ──────────────────────────────────────────────────────────────
-
 let prev = 0;
 function frame(ts) {
   const dt = prev ? Math.min((ts - prev) / 1000, 0.05) : 0.016;
@@ -294,6 +1037,11 @@ function frame(ts) {
   update(dt);
   render();
   updateHUD();
+  drawInstrPanel();
+  if (msgTimer > 0) {
+    msgTimer -= dt;
+    if (msgTimer <= 0) msgEl.classList.remove('show');
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
