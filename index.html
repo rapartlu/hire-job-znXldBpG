@@ -7,7 +7,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E%E2%9C%88%EF%B8%8F%3C/text%3E%3C/svg%3E">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #4a7ab5; font-family: -apple-system, system-ui, sans-serif; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #87a8c4; font-family: -apple-system, system-ui, sans-serif; }
     canvas { display: block; width: 100%; height: 100%; }
     #hud {
       position: fixed; top: 14px; left: 14px;
@@ -19,9 +19,32 @@
       border-left: 2px solid #0f0;
       border-radius: 0 4px 4px 0;
     }
-    #hud .row { display: flex; gap: 10px; min-width: 160px; }
+    #hud .row { display: flex; gap: 10px; min-width: 170px; }
     #hud .row span:first-child { color: rgba(0,255,0,0.55); width: 36px; }
     #hud .row span:last-child { color: #0f0; margin-left: auto; font-variant-numeric: tabular-nums; }
+    #attitude {
+      position: fixed; bottom: 80px; left: 14px;
+      width: 110px; height: 110px;
+      border: 2px solid rgba(0,255,0,0.6);
+      border-radius: 50%;
+      overflow: hidden;
+      background: linear-gradient(to bottom, #74a8df 0%, #74a8df 50%, #6b4f2a 50%, #6b4f2a 100%);
+      pointer-events: none;
+      box-shadow: 0 0 12px rgba(0,255,0,0.3);
+    }
+    #attitudeInner {
+      position: absolute; inset: 0;
+      transition: none;
+    }
+    #attitudeCross {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 60px; height: 2px; background: #ffd966;
+      box-shadow: 0 0 4px rgba(255,217,102,0.8);
+    }
+    #attitudeCross::before {
+      content: ''; position: absolute; left: 50%; top: -8px;
+      width: 2px; height: 18px; background: #ffd966; transform: translateX(-50%);
+    }
     #weather {
       position: fixed; top: 14px; right: 14px;
       color: #fff; font: 12px/1.7 "JetBrains Mono", monospace;
@@ -30,13 +53,13 @@
       padding: 8px 12px;
       background: rgba(0,0,0,0.32);
       border-radius: 4px;
-      min-width: 160px;
+      min-width: 170px;
     }
     #weather .on { color: #ffd966; }
     #weather .off { color: rgba(255,255,255,0.4); }
     #controls {
       position: fixed; bottom: 32px; right: 14px;
-      color: rgba(255,255,255,0.78); font: 11.5px/1.75 "JetBrains Mono", monospace;
+      color: rgba(255,255,255,0.85); font: 11.5px/1.75 "JetBrains Mono", monospace;
       text-align: right; pointer-events: none;
       text-shadow: 0 1px 2px rgba(0,0,0,0.55);
     }
@@ -52,33 +75,37 @@
     #message {
       position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
       padding: 18px 28px;
-      background: rgba(0,0,0,0.7); color: #fff;
+      background: rgba(0,0,0,0.78); color: #fff;
       font: bold 18px sans-serif; border-radius: 8px;
       pointer-events: none; opacity: 0;
       transition: opacity 0.35s ease;
       text-align: center; line-height: 1.4;
+      white-space: pre;
     }
     #message.show { opacity: 1; }
     footer {
       position: fixed; bottom: 0; width: 100%; text-align: center;
       padding: 5px; font: 11px sans-serif;
-      color: rgba(255,255,255,0.42); pointer-events: none;
+      color: rgba(255,255,255,0.5); pointer-events: none;
     }
-    footer a { color: rgba(255,255,255,0.55); text-decoration: none; }
+    footer a { color: rgba(255,255,255,0.6); text-decoration: none; }
   </style>
 </head>
 <body>
-  <canvas id="c"></canvas>
   <div id="hud">
     <div class="row"><span>ALT</span><span id="alt">0</span><span style="color:rgba(0,255,0,0.5)">m</span></div>
-    <div class="row"><span>SPD</span><span id="spd">0</span><span style="color:rgba(0,255,0,0.5)">m/s</span></div>
+    <div class="row"><span>IAS</span><span id="spd">0</span><span style="color:rgba(0,255,0,0.5)">m/s</span></div>
     <div class="row"><span>HDG</span><span id="hdg">000</span><span style="color:rgba(0,255,0,0.5)">&deg;</span></div>
     <div class="row"><span>THR</span><span id="thr">55</span><span style="color:rgba(0,255,0,0.5)">%</span></div>
+    <div class="row"><span>AoA</span><span id="aoa">0</span><span style="color:rgba(0,255,0,0.5)">&deg;</span></div>
+    <div class="row"><span>G</span><span id="gforce">1.0</span><span style="color:rgba(0,255,0,0.5)">g</span></div>
   </div>
+  <div id="attitude"><div id="attitudeInner"><div id="attitudeCross"></div></div></div>
   <div id="weather">
     <div>WIND <span id="windState" class="off">OFF</span> <span id="windDetail" style="opacity:0.55"></span></div>
     <div>FOG <span id="fogState" class="off">OFF</span></div>
-    <div style="margin-top:6px; color:rgba(255,255,255,0.5); font-size:11px;">Runways: <span id="runwayDist" style="color:#ffd966">--</span></div>
+    <div>VIEW <span id="viewMode">chase</span></div>
+    <div style="margin-top:6px; color:rgba(255,255,255,0.55); font-size:11px;">Runway: <span id="runwayDist" style="color:#ffd966">--</span></div>
   </div>
   <div id="controls">
     <div><kbd>&larr;</kbd> <kbd>&rarr;</kbd> &nbsp; Turn</div>
@@ -88,567 +115,706 @@
     <div style="margin-top:6px;"><kbd>C</kbd> View &nbsp; <kbd>R</kbd> Wind &nbsp; <kbd>F</kbd> Fog &nbsp; <kbd>Space</kbd> Reset</div>
   </div>
   <div id="message"></div>
-  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a> &middot; <span style="opacity:0.7;font-family:monospace;">v6</span></footer>
+  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a> &middot; <span style="opacity:0.7;font-family:monospace;">v7</span></footer>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
-  <script>
-'use strict';
-
-const canvas = document.getElementById('c');
-const gl = canvas.getContext('webgl', { antialias: true });
-if (!gl) {
-  document.body.innerHTML = '<p style="color:#f55;padding:24px;font-family:sans-serif">WebGL is not supported in this browser.</p>';
-  throw new Error('no webgl');
-}
-
-// ── Shader helpers ─────────────────────────────────────────────────────────
-
-function mkShader(type, src) {
-  const s = gl.createShader(type);
-  gl.shaderSource(s, src);
-  gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
-    throw new Error('Shader error: ' + gl.getShaderInfoLog(s));
-  return s;
-}
-function mkProg(vsSrc, fsSrc) {
-  const p = gl.createProgram();
-  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vsSrc));
-  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fsSrc));
-  gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS))
-    throw new Error('Program error: ' + gl.getProgramInfoLog(p));
-  return p;
-}
-
-// ── Shaders ────────────────────────────────────────────────────────────────
-
-// Ground: checkerboard + 2 runways painted on top, with fog falloff
-const GROUND_VS = `
-  attribute vec3 aPos;
-  uniform mat4 uMVP;
-  varying vec3 vWP;
-  varying float vDistCamSq;
-  uniform vec3 uCam;
-  void main() {
-    gl_Position = uMVP * vec4(aPos, 1.0);
-    vWP = aPos;
-    vec3 d = aPos - uCam;
-    vDistCamSq = d.x*d.x + d.z*d.z;
-  }`;
-const GROUND_FS = `
-  precision highp float;
-  varying vec3 vWP;
-  varying float vDistCamSq;
-  uniform float uFog;
-  uniform vec3 uFogColor;
-  // Runway 1 centred on origin, oriented along +Z
-  // Runway 2 centred on (2400, 0, 1800), rotated 60deg about Y
-  bool onRunway(vec3 p, vec3 c, float rotRad, float halfW, float halfL) {
-    float dx = p.x - c.x;
-    float dz = p.z - c.z;
-    float ca = cos(rotRad), sa = sin(rotRad);
-    float lx =  ca * dx + sa * dz;
-    float lz = -sa * dx + ca * dz;
-    return abs(lx) < halfW && abs(lz) < halfL;
-  }
-  bool centerLine(vec3 p, vec3 c, float rotRad, float halfL) {
-    float dx = p.x - c.x;
-    float dz = p.z - c.z;
-    float ca = cos(rotRad), sa = sin(rotRad);
-    float lx =  ca * dx + sa * dz;
-    float lz = -sa * dx + ca * dz;
-    if (abs(lz) > halfL) return false;
-    if (abs(lx) > 4.0) return false;
-    return mod(lz, 80.0) < 40.0;
-  }
-  void main() {
-    vec3 col;
-    // checkerboard grass
-    float c = mod(floor(vWP.x / 60.0) + floor(vWP.z / 60.0), 2.0);
-    col = c < 1.0 ? vec3(0.20, 0.50, 0.20) : vec3(0.28, 0.60, 0.28);
-
-    // runway tarmac
-    if (onRunway(vWP, vec3(0.0,0.0,0.0), 0.0, 35.0, 400.0)) {
-      col = vec3(0.16, 0.17, 0.20);
-      if (centerLine(vWP, vec3(0.0,0.0,0.0), 0.0, 380.0))
-        col = vec3(0.92, 0.92, 0.92);
-    }
-    if (onRunway(vWP, vec3(2400.0,0.0,1800.0), 1.047, 35.0, 400.0)) {
-      col = vec3(0.16, 0.17, 0.20);
-      if (centerLine(vWP, vec3(2400.0,0.0,1800.0), 1.047, 380.0))
-        col = vec3(0.92, 0.92, 0.92);
-    }
-
-    // fog
-    if (uFog > 0.5) {
-      float fogMix = clamp(vDistCamSq / 4000000.0, 0.0, 1.0);
-      col = mix(col, uFogColor, fogMix);
-    }
-    gl_FragColor = vec4(col, 1.0);
-  }`;
-
-// Plane: per-vertex colour
-const PLANE_VS = `
-  attribute vec3 aPos;
-  attribute vec3 aCol;
-  uniform mat4 uMVP;
-  varying vec3 vCol;
-  void main() {
-    gl_Position = uMVP * vec4(aPos, 1.0);
-    vCol = aCol;
-  }`;
-const PLANE_FS = `
-  precision mediump float;
-  varying vec3 vCol;
-  void main() { gl_FragColor = vec4(vCol, 1.0); }`;
-
-// Cloud billboards: soft blobs in the sky
-const CLOUD_VS = `
-  attribute vec3 aPos;
-  attribute vec2 aUV;
-  uniform mat4 uMVP;
-  varying vec2 vUV;
-  void main() {
-    gl_Position = uMVP * vec4(aPos, 1.0);
-    vUV = aUV;
-  }`;
-const CLOUD_FS = `
-  precision mediump float;
-  varying vec2 vUV;
-  uniform float uFog;
-  uniform vec3 uFogColor;
-  void main() {
-    float d = distance(vUV, vec2(0.5));
-    float a = smoothstep(0.5, 0.18, d);
-    vec3 c = vec3(0.98, 0.99, 1.0);
-    if (uFog > 0.5) c = mix(c, uFogColor, 0.7);
-    gl_FragColor = vec4(c, a * 0.85);
-  }`;
-
-const groundProg = mkProg(GROUND_VS, GROUND_FS);
-const planeProg  = mkProg(PLANE_VS,  PLANE_FS);
-const cloudProg  = mkProg(CLOUD_VS,  CLOUD_FS);
-
-// ── Ground buffer ──────────────────────────────────────────────────────────
-const groundBuf = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, groundBuf);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-  -30000, 0, -30000,  30000, 0, -30000,  30000, 0,  30000,
-  -30000, 0, -30000,  30000, 0,  30000, -30000, 0,  30000,
-]), gl.STATIC_DRAW);
-
-// ── Plane geometry ─────────────────────────────────────────────────────────
-function addBox(arr, x0,y0,z0, x1,y1,z1, r,g,b) {
-  const faces = [
-    [x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y0,z1, x1,y1,z1, x0,y1,z1],
-    [x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y0,z0, x0,y1,z0, x1,y1,z0],
-    [x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y0,z0, x0,y1,z1, x0,y1,z0],
-    [x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y0,z1, x1,y1,z0, x1,y1,z1],
-    [x0,y1,z1, x1,y1,z1, x1,y1,z0, x0,y1,z1, x1,y1,z0, x0,y1,z0],
-    [x0,y0,z0, x1,y0,z0, x1,y0,z1, x0,y0,z0, x1,y0,z1, x0,y0,z1],
-  ];
-  for (const face of faces) {
-    for (let i = 0; i < face.length; i += 3) {
-      arr.push(face[i], face[i+1], face[i+2], r, g, b);
-    }
-  }
-}
-const planeVerts = [];
-addBox(planeVerts, -0.3,-0.3,-2.2,  0.3, 0.3, 2.2,  0.78,0.78,0.84); // fuselage
-addBox(planeVerts, -3.6,-0.1,-0.6,  3.6, 0.1, 0.6,  0.72,0.74,0.80); // wings
-addBox(planeVerts, -1.4,-0.07,-2.05, 1.4, 0.07,-1.50, 0.70,0.72,0.78); // h-tail
-addBox(planeVerts, -0.06,0.05,-2.1, 0.06, 0.92,-1.5,  0.66,0.69,0.76); // v-tail
-addBox(planeVerts, -0.22,0.28, 0.2, 0.22, 0.62, 1.0,  0.33,0.58,0.82); // canopy
-addBox(planeVerts, -0.18,-0.5,-1.0, 0.18,-0.32, 0.8,  0.40,0.42,0.46); // belly fairing (visual interest)
-const planeBuf = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, planeBuf);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(planeVerts), gl.STATIC_DRAW);
-const planeVertCount = planeVerts.length / 6;
-
-// ── Clouds ─────────────────────────────────────────────────────────────────
-// Each cloud is a single quad facing the camera, soft alpha blob.
-const NUM_CLOUDS = 90;
-const clouds = [];
-for (let i = 0; i < NUM_CLOUDS; i++) {
-  clouds.push({
-    x: (Math.random() - 0.5) * 8000,
-    y: 350 + Math.random() * 850,
-    z: (Math.random() - 0.5) * 8000,
-    size: 120 + Math.random() * 220,
-  });
-}
-
-// Cloud quad geometry (single shared, will be transformed per-cloud)
-const cloudQuadVerts = new Float32Array([
-  -1,-1,0,  0,0,  1,-1,0, 1,0,  1, 1,0, 1,1,
-  -1,-1,0,  0,0,  1, 1,0, 1,1, -1, 1,0, 0,1,
-]);
-const cloudBuf = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, cloudBuf);
-gl.bufferData(gl.ARRAY_BUFFER, cloudQuadVerts, gl.STATIC_DRAW);
-
-// ── State ──────────────────────────────────────────────────────────────────
-const RUNWAY1 = { x: 0, z: 0 };
-const RUNWAY2 = { x: 2400, z: 1800 };
-
-function initState() {
-  return {
-    pos:      vec3.fromValues(0, 250, -1500),
-    q:        quat.create(),
-    speed:    140,                 // start at cruise speed (above stall) so you don't immediately fall
-    throttle: 0.55,
-    wind:     false,
-    windDir:  Math.random() * Math.PI * 2,
-    fog:      false,
-    landedMsgTimer: 0,
-    crashed:  false,
-    touchdownLatched: false,
-    cockpit:  false,
-  };
-}
-let state = initState();
-let lastY = state.pos[1];
-
-const keys = {};
-window.addEventListener('keydown', e => {
-  // Toggles fire once per press
-  if (!keys[e.key]) {
-    if (e.key === 'r' || e.key === 'R') {
-      state.wind = !state.wind;
-      if (state.wind) state.windDir = Math.random() * Math.PI * 2;
-      flash(state.wind ? 'Wind on' : 'Wind off');
-    } else if (e.key === 'f' || e.key === 'F') {
-      state.fog = !state.fog;
-      flash(state.fog ? 'Fog on' : 'Fog off');
-    } else if (e.key === 'c' || e.key === 'C') {
-      state.cockpit = !state.cockpit;
-      flash(state.cockpit ? 'Cockpit view' : 'Chase cam');
-    } else if (e.key === ' ') {
-      const prevCockpit = state.cockpit;
-      state = initState();
-      state.cockpit = prevCockpit;  // preserve view preference across resets
-      lastY = state.pos[1];
-      flash('Reset');
-    }
-  }
-  keys[e.key] = true;
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
-}, { passive: false });
-window.addEventListener('keyup', e => { keys[e.key] = false; });
-
-const msgEl = document.getElementById('message');
-let msgTimer = 0;
-function flash(text) {
-  msgEl.textContent = text;
-  msgEl.classList.add('show');
-  msgTimer = 1.2;
-}
-
-// ── Matrices ───────────────────────────────────────────────────────────────
-const proj   = mat4.create();
-const view   = mat4.create();
-const mvp    = mat4.create();
-const modelM = mat4.create();
-
-function resize() {
-  canvas.width  = canvas.clientWidth;
-  canvas.height = canvas.clientHeight;
-  gl.viewport(0, 0, canvas.width, canvas.height);
-  mat4.perspective(proj, Math.PI / 3, canvas.width / canvas.height, 0.5, 100000);
-}
-window.addEventListener('resize', resize);
-resize();
-
-// ── Physics ────────────────────────────────────────────────────────────────
-//
-// Real-ish flight model:
-//   - Throttle → thrust (forward acceleration)
-//   - Drag opposes speed quadratically; speed reaches equilibrium at a value
-//     determined by throttle alone (zero throttle → speed decays to ~0).
-//   - Lift = function of airspeed². Below stall speed, plane falls.
-//     Above stall speed at level pitch, plane holds altitude.
-//   - Climbing burns speed (kinetic → potential), diving gains speed.
-//   - No magic "throttle counts as lift". You need actual airspeed.
-//   - Crash if you hit the ground with significant vertical velocity OR
-//     not aligned with a runway. Soft touchdown on a runway = OK.
-//
-const PITCH_RATE  = 1.1;
-const ROLL_RATE   = 1.4;
-const YAW_RATE    = 0.7;
-const GRAVITY     = 9.8;            // m/s² — real gravity for a real fall
-const THRUST_MAX  = 42;             // m/s² thrust at full throttle
-const DRAG_COEF   = 0.0007;         // tuned so cruise speed ≈ 150-180 m/s
-const STALL_SPEED = 28;             // m/s — below this, no lift
-const PITCH_TO_SPEED = 14;          // m/s² — climbing/diving energy exchange
-const WIND_SPEED  = 18;
-const GROUND_Y    = 4;
-const CRASH_VY    = -8;             // m/s — descent rate above which contact = crash
-
-function update(dt) {
-  if (state.crashed) {
-    // Frozen until Space resets. Ignore inputs except R/F/Space (handled in keydown).
-    return;
-  }
-
-  // Throttle controls
-  if (keys['w'] || keys['W']) state.throttle = Math.min(1.0, state.throttle + 0.5 * dt);
-  if (keys['s'] || keys['S']) state.throttle = Math.max(0.0, state.throttle - 0.5 * dt);
-
-  // Pitch (up arrow = nose down = descend; down arrow = nose up = climb)
-  if (keys['ArrowUp'])   quat.rotateX(state.q, state.q,  PITCH_RATE * dt);
-  if (keys['ArrowDown']) quat.rotateX(state.q, state.q, -PITCH_RATE * dt);
-
-  // Coordinated turn (arrow Left/Right = roll + yaw together).
-  // Signs flipped from prior math reasoning per operator's direct test (v6).
-  if (keys['ArrowLeft']) {
-    quat.rotateZ(state.q, state.q, -ROLL_RATE * dt);
-    quat.rotateY(state.q, state.q,  YAW_RATE * 0.9 * dt);
-  }
-  if (keys['ArrowRight']) {
-    quat.rotateZ(state.q, state.q,  ROLL_RATE * dt);
-    quat.rotateY(state.q, state.q, -YAW_RATE * 0.9 * dt);
-  }
-
-  // Pure rudder (Q/E) — flipped to match
-  if (keys['q'] || keys['Q']) quat.rotateY(state.q, state.q,  YAW_RATE * dt);
-  if (keys['e'] || keys['E']) quat.rotateY(state.q, state.q, -YAW_RATE * dt);
-
-  quat.normalize(state.q, state.q);
-
-  // Forward direction in world space (unit vector)
-  const fwd = vec3.transformQuat(vec3.create(), [0, 0, 1], state.q);
-
-  // ── Speed dynamics ──
-  // Thrust forward + drag back + pitch energy exchange.
-  // fwd.y > 0 = climbing → lose speed. fwd.y < 0 = diving → gain speed.
-  const thrust = state.throttle * THRUST_MAX;
-  const drag   = DRAG_COEF * state.speed * state.speed;
-  const pitchEnergy = -fwd[1] * PITCH_TO_SPEED;  // dive (fwd.y<0) increases speed
-  state.speed = Math.max(0, state.speed + (thrust - drag + pitchEnergy) * dt);
-
-  // ── Translation ──
-  state.pos[0] += fwd[0] * state.speed * dt;
-  state.pos[1] += fwd[1] * state.speed * dt;
-  state.pos[2] += fwd[2] * state.speed * dt;
-
-  // Wind: lateral drift in world coords
-  if (state.wind) {
-    state.pos[0] += Math.cos(state.windDir) * WIND_SPEED * dt;
-    state.pos[2] += Math.sin(state.windDir) * WIND_SPEED * dt;
-  }
-
-  // ── Lift vs gravity ──
-  // Lift offsets gravity when above stall speed.
-  // Below stall: full gravity, no lift. Plane falls fast.
-  // At stall: lift = gravity. Level flight if level pitch.
-  // Above stall: extra lift, can climb (already captured by pitch direction).
-  // We model only the residual gravity not offset by lift.
-  let liftFraction;
-  if (state.speed >= STALL_SPEED) {
-    liftFraction = Math.min(1, (state.speed / STALL_SPEED) - 0.0);  // 1.0+ above stall
-    liftFraction = Math.min(1.0, liftFraction);  // cap at full offset
-  } else {
-    // Below stall: lift drops sharply. At speed 0: zero lift.
-    liftFraction = (state.speed / STALL_SPEED) * 0.4;
-  }
-  // Apply residual gravity (any portion not offset by lift)
-  state.pos[1] -= GRAVITY * (1 - liftFraction) * dt;
-
-  // ── Ground contact: crash or touchdown ──
-  if (state.pos[1] < GROUND_Y) {
-    const vy = (state.pos[1] - lastY) / dt;  // m/s, negative = descending
-
-    // On runway check
-    const onR1 = Math.abs(state.pos[0]) < 35 && Math.abs(state.pos[2]) < 400;
-    const dx = state.pos[0] - RUNWAY2.x;
-    const dz = state.pos[2] - RUNWAY2.z;
-    const ca = Math.cos(1.047), sa = Math.sin(1.047);
-    const lx =  ca * dx + sa * dz;
-    const lz = -sa * dx + ca * dz;
-    const onR2 = Math.abs(lx) < 35 && Math.abs(lz) < 400;
-    const onRunway = onR1 || onR2;
-
-    // Check roll angle — wings must be ~level for a clean landing
-    const up = vec3.transformQuat(vec3.create(), [0, 1, 0], state.q);
-    const wingsLevelFactor = up[1];  // 1.0 = level, 0 = on side, -1 = inverted
-
-    const softVertical = vy > CRASH_VY;
-    const wingsLevel = wingsLevelFactor > 0.85;
-
-    if (onRunway && softVertical && wingsLevel) {
-      // Clean touchdown
-      state.pos[1] = GROUND_Y;
-      if (!state.touchdownLatched) {
-        flash('Touchdown! 🛬');
-        state.touchdownLatched = true;
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.166.0/build/three.module.js"
       }
-    } else {
-      // Crash
-      state.crashed = true;
-      state.pos[1] = GROUND_Y;
-      const reason =
-        !onRunway   ? 'off-runway impact' :
-        !softVertical ? 'descent too steep' :
-        !wingsLevel ? 'wings not level' : 'impact';
-      flash('💥 Crashed — ' + reason + '\nPress Space to reset');
-      msgTimer = 6;
     }
-  } else {
-    state.touchdownLatched = false;
-  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
 
-  lastY = state.pos[1];
-  if (state.landedMsgTimer > 0) state.landedMsgTimer -= dt;
-}
+    // ─────────────────────────────────────────────────────────────────────────
+    // SCENE + RENDERER
+    // ─────────────────────────────────────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    document.body.prepend(renderer.domElement);
 
-// ── Render ─────────────────────────────────────────────────────────────────
-function render() {
-  const fogColor = state.fog ? [0.78, 0.82, 0.85] : [0.44, 0.67, 0.94];
-  gl.clearColor(fogColor[0], fogColor[1], fogColor[2], 1);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.DEPTH_TEST);
+    const scene = new THREE.Scene();
 
-  // Camera: two modes — chase cam (default) or cockpit (1st person).
-  // Toggle with C. Cockpit uses the plane's own up vector so the world tilts
-  // when you bank/yaw, which makes the rotation direction feel natural.
-  let camPos, lookTgt, upVec;
-  if (state.cockpit) {
-    // 1st person: pilot-eye height inside the canopy (plane rendered at 2.2x scale)
-    // canopy roof ~y=1.36 world; pilot head at ~1.0; looking forward through windshield
-    const camOff = vec3.transformQuat(vec3.create(), [0, 1.0, 1.0], state.q);
-    camPos  = vec3.add(vec3.create(), state.pos, camOff);
-    const ahead = vec3.transformQuat(vec3.create(), [0, 0.4, 50], state.q);
-    lookTgt = vec3.add(vec3.create(), state.pos, ahead);
-    upVec   = vec3.transformQuat(vec3.create(), [0, 1, 0], state.q); // tilts with plane
-  } else {
-    // Chase cam: behind + above, world-up so horizon stays level
-    const camOff = vec3.transformQuat(vec3.create(), [0, 5, -16], state.q);
-    camPos  = vec3.add(vec3.create(), state.pos, camOff);
-    const ahead = vec3.transformQuat(vec3.create(), [0, 0, 3], state.q);
-    lookTgt = vec3.add(vec3.create(), state.pos, ahead);
-    upVec   = [0, 1, 0];
-  }
-  mat4.lookAt(view, camPos, lookTgt, upVec);
+    // Procedural sky
+    function makeSkyTexture() {
+      const c = document.createElement('canvas');
+      c.width = 2; c.height = 256;
+      const ctx = c.getContext('2d');
+      const grad = ctx.createLinearGradient(0, 0, 0, 256);
+      grad.addColorStop(0, '#1d4a85');
+      grad.addColorStop(0.5, '#7eb4dd');
+      grad.addColorStop(1, '#e8ebed');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 2, 256);
+      const tex = new THREE.CanvasTexture(c);
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+    const skyTex = makeSkyTexture();
+    scene.background = skyTex;
+    scene.environment = skyTex;
 
-  // ── Ground ──
-  gl.useProgram(groundProg);
-  mat4.multiply(mvp, proj, view);
-  gl.uniformMatrix4fv(gl.getUniformLocation(groundProg, 'uMVP'), false, mvp);
-  gl.uniform3fv(gl.getUniformLocation(groundProg, 'uCam'), camPos);
-  gl.uniform1f(gl.getUniformLocation(groundProg, 'uFog'), state.fog ? 1.0 : 0.0);
-  gl.uniform3fv(gl.getUniformLocation(groundProg, 'uFogColor'), fogColor);
-  gl.bindBuffer(gl.ARRAY_BUFFER, groundBuf);
-  const gPosLoc = gl.getAttribLocation(groundProg, 'aPos');
-  gl.enableVertexAttribArray(gPosLoc);
-  gl.vertexAttribPointer(gPosLoc, 3, gl.FLOAT, false, 12, 0);
-  gl.drawArrays(gl.TRIANGLES, 0, 6);
+    // Fog (will be enabled/disabled per state)
+    scene.fog = new THREE.Fog(0xb8c8d2, 800, 8000);
+    let fogEnabled = false;
+    scene.fog.near = 60000;  // start with fog effectively off
+    scene.fog.far  = 100000;
 
-  // ── Clouds (blended, no depth write) ──
-  gl.useProgram(cloudProg);
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  gl.depthMask(false);
-  gl.bindBuffer(gl.ARRAY_BUFFER, cloudBuf);
-  const cPosLoc = gl.getAttribLocation(cloudProg, 'aPos');
-  const cUVLoc  = gl.getAttribLocation(cloudProg, 'aUV');
-  gl.enableVertexAttribArray(cPosLoc);
-  gl.enableVertexAttribArray(cUVLoc);
-  gl.vertexAttribPointer(cPosLoc, 3, gl.FLOAT, false, 20, 0);
-  gl.vertexAttribPointer(cUVLoc,  2, gl.FLOAT, false, 20, 12);
-  gl.uniform1f(gl.getUniformLocation(cloudProg, 'uFog'), state.fog ? 1.0 : 0.0);
-  gl.uniform3fv(gl.getUniformLocation(cloudProg, 'uFogColor'), fogColor);
-  for (const cl of clouds) {
-    mat4.identity(modelM);
-    mat4.translate(modelM, modelM, [cl.x, cl.y, cl.z]);
-    // Cheap "face the camera": only Y-rotation to point toward camPos
-    const dx = camPos[0] - cl.x, dz = camPos[2] - cl.z;
-    const angle = Math.atan2(dx, dz);
-    mat4.rotateY(modelM, modelM, angle);
-    mat4.scale(modelM, modelM, [cl.size, cl.size * 0.55, 1]);
-    mat4.multiply(mvp, proj, view);
-    mat4.multiply(mvp, mvp, modelM);
-    gl.uniformMatrix4fv(gl.getUniformLocation(cloudProg, 'uMVP'), false, mvp);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-  }
-  gl.depthMask(true);
-  gl.disable(gl.BLEND);
+    // ─────────────────────────────────────────────────────────────────────────
+    // LIGHTING
+    // ─────────────────────────────────────────────────────────────────────────
+    const sun = new THREE.DirectionalLight(0xfff2d0, 2.2);
+    sun.position.set(2000, 3000, 1500);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 100;
+    sun.shadow.camera.far = 6000;
+    sun.shadow.camera.left = -200; sun.shadow.camera.right = 200;
+    sun.shadow.camera.top = 200;  sun.shadow.camera.bottom = -200;
+    sun.shadow.bias = -0.0005;
+    scene.add(sun);
 
-  // ── Plane ──
-  gl.useProgram(planeProg);
-  mat4.fromRotationTranslation(modelM, state.q, state.pos);
-  mat4.scale(modelM, modelM, [2.2, 2.2, 2.2]);
-  mat4.multiply(mvp, proj, view);
-  mat4.multiply(mvp, mvp, modelM);
-  gl.uniformMatrix4fv(gl.getUniformLocation(planeProg, 'uMVP'), false, mvp);
-  gl.bindBuffer(gl.ARRAY_BUFFER, planeBuf);
-  const pPosLoc = gl.getAttribLocation(planeProg, 'aPos');
-  const pColLoc = gl.getAttribLocation(planeProg, 'aCol');
-  gl.enableVertexAttribArray(pPosLoc);
-  gl.enableVertexAttribArray(pColLoc);
-  gl.vertexAttribPointer(pPosLoc, 3, gl.FLOAT, false, 24, 0);
-  gl.vertexAttribPointer(pColLoc, 3, gl.FLOAT, false, 24, 12);
-  gl.drawArrays(gl.TRIANGLES, 0, planeVertCount);
-}
+    const ambient = new THREE.HemisphereLight(0xb0c8e0, 0x4a5232, 0.8);
+    scene.add(ambient);
 
-// ── HUD ────────────────────────────────────────────────────────────────────
-const altEl = document.getElementById('alt');
-const spdEl = document.getElementById('spd');
-const hdgEl = document.getElementById('hdg');
-const thrEl = document.getElementById('thr');
-const windStateEl = document.getElementById('windState');
-const windDetailEl = document.getElementById('windDetail');
-const fogStateEl   = document.getElementById('fogState');
-const runwayDistEl = document.getElementById('runwayDist');
+    // ─────────────────────────────────────────────────────────────────────────
+    // GROUND with procedural grass + runway textures
+    // ─────────────────────────────────────────────────────────────────────────
+    function makeGroundTexture() {
+      const size = 1024;
+      const c = document.createElement('canvas');
+      c.width = c.height = size;
+      const ctx = c.getContext('2d');
+      // Base grass green
+      ctx.fillStyle = '#3d6b32';
+      ctx.fillRect(0, 0, size, size);
+      // Noise speckles
+      for (let i = 0; i < 12000; i++) {
+        const x = Math.random() * size, y = Math.random() * size;
+        const v = Math.random() * 40 - 20;
+        ctx.fillStyle = `rgb(${61+v},${107+v},${50+v})`;
+        ctx.fillRect(x, y, 2, 2);
+      }
+      // Darker patches
+      for (let i = 0; i < 80; i++) {
+        const x = Math.random() * size, y = Math.random() * size;
+        const r = 20 + Math.random() * 50;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, 'rgba(50,80,40,0.4)');
+        g.addColorStop(1, 'rgba(50,80,40,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(800, 800);
+      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+    const groundTex = makeGroundTexture();
+    const groundGeom = new THREE.PlaneGeometry(60000, 60000, 1, 1);
+    groundGeom.rotateX(-Math.PI / 2);
+    const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1.0, metalness: 0 });
+    const ground = new THREE.Mesh(groundGeom, groundMat);
+    ground.receiveShadow = true;
+    ground.position.y = 0;
+    scene.add(ground);
 
-function compass(deg) {
-  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
-  return dirs[Math.round(deg / 45) % 8];
-}
+    // Runway texture
+    function makeRunwayTexture() {
+      const c = document.createElement('canvas');
+      c.width = 128; c.height = 512;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#1d1f24';
+      ctx.fillRect(0, 0, 128, 512);
+      // Edge markings
+      ctx.fillStyle = '#d8d8d8';
+      ctx.fillRect(8, 0, 4, 512);
+      ctx.fillRect(116, 0, 4, 512);
+      // Dashed centerline
+      ctx.fillStyle = '#f2f2f2';
+      for (let y = 20; y < 512; y += 60) {
+        ctx.fillRect(60, y, 8, 32);
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(1, 6);
+      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+    const runwayTex = makeRunwayTexture();
+    function makeRunway(x, z, rotY) {
+      const geom = new THREE.PlaneGeometry(70, 1200);
+      geom.rotateX(-Math.PI / 2);
+      const mat = new THREE.MeshStandardMaterial({ map: runwayTex, roughness: 0.85, metalness: 0 });
+      const m = new THREE.Mesh(geom, mat);
+      m.position.set(x, 0.1, z);
+      m.rotation.y = rotY;
+      m.receiveShadow = true;
+      return m;
+    }
+    const RUNWAY1 = { x: 0, z: 0, rot: 0 };
+    const RUNWAY2 = { x: 2400, z: 1800, rot: Math.PI / 3 };
+    scene.add(makeRunway(RUNWAY1.x, RUNWAY1.z, RUNWAY1.rot));
+    scene.add(makeRunway(RUNWAY2.x, RUNWAY2.z, RUNWAY2.rot));
 
-function updateHUD() {
-  altEl.textContent = Math.max(0, Math.round(state.pos[1]));
-  spdEl.textContent = Math.round(state.speed);
-  const fwd = vec3.transformQuat(vec3.create(), [0, 0, 1], state.q);
-  const hdg = ((Math.atan2(fwd[0], fwd[2]) * 180 / Math.PI) + 360) % 360;
-  hdgEl.textContent = String(Math.round(hdg)).padStart(3, '0');
-  thrEl.textContent = Math.round(state.throttle * 100);
+    // ─────────────────────────────────────────────────────────────────────────
+    // PLANE — procedural detailed model
+    // ─────────────────────────────────────────────────────────────────────────
+    const plane = new THREE.Group();
 
-  if (state.wind) {
-    windStateEl.textContent = 'ON';
-    windStateEl.className = 'on';
-    const wd = ((state.windDir * 180 / Math.PI) + 360) % 360;
-    windDetailEl.textContent = '(' + compass(wd) + ')';
-  } else {
-    windStateEl.textContent = 'OFF';
-    windStateEl.className = 'off';
-    windDetailEl.textContent = '';
-  }
-  fogStateEl.textContent = state.fog ? 'ON' : 'OFF';
-  fogStateEl.className   = state.fog ? 'on' : 'off';
+    const fuselageMat = new THREE.MeshStandardMaterial({ color: 0xe8ecf0, roughness: 0.55, metalness: 0.35 });
+    const wingMat     = new THREE.MeshStandardMaterial({ color: 0xdde2e8, roughness: 0.50, metalness: 0.30 });
+    const accentMat   = new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.45, metalness: 0.2 });
+    const canopyMat   = new THREE.MeshPhysicalMaterial({
+      color: 0x1d2638, roughness: 0.05, metalness: 0,
+      transmission: 0.6, thickness: 0.3, transparent: true, opacity: 0.65,
+      clearcoat: 1.0, clearcoatRoughness: 0.05,
+    });
+    const propMat     = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6, metalness: 0.1 });
+    const tireMat     = new THREE.MeshStandardMaterial({ color: 0x0d0d0d, roughness: 0.95, metalness: 0 });
 
-  // Nearest runway distance
-  const d1 = Math.hypot(state.pos[0] - RUNWAY1.x, state.pos[2] - RUNWAY1.z);
-  const d2 = Math.hypot(state.pos[0] - RUNWAY2.x, state.pos[2] - RUNWAY2.z);
-  const nearest = Math.min(d1, d2);
-  runwayDistEl.textContent = (nearest / 1000).toFixed(1) + ' km (#' + (d1 < d2 ? '1' : '2') + ')';
-}
+    // Fuselage — capsule shape (cylinder + caps)
+    const fuseGeom = new THREE.CapsuleGeometry(0.55, 4.5, 8, 16);
+    fuseGeom.rotateX(Math.PI / 2);
+    const fuse = new THREE.Mesh(fuseGeom, fuselageMat);
+    fuse.castShadow = true;
+    plane.add(fuse);
 
-// ── Main loop ──────────────────────────────────────────────────────────────
-let prev = 0;
-function frame(ts) {
-  const dt = prev ? Math.min((ts - prev) / 1000, 0.05) : 0.016;
-  prev = ts;
-  update(dt);
-  render();
-  updateHUD();
-  if (msgTimer > 0) {
-    msgTimer -= dt;
-    if (msgTimer <= 0) msgEl.classList.remove('show');
-  }
-  requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
+    // Nose cone
+    const noseGeom = new THREE.ConeGeometry(0.55, 1.2, 16);
+    noseGeom.rotateX(Math.PI / 2);
+    const nose = new THREE.Mesh(noseGeom, accentMat);
+    nose.position.z = 3.1;
+    nose.castShadow = true;
+    plane.add(nose);
+
+    // Propeller hub + blades (spins)
+    const propHub = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), propMat);
+    propHub.position.z = 3.75;
+    plane.add(propHub);
+    const propGroup = new THREE.Group();
+    propGroup.position.z = 3.78;
+    const bladeGeom = new THREE.BoxGeometry(0.08, 2.8, 0.04);
+    for (let i = 0; i < 2; i++) {
+      const blade = new THREE.Mesh(bladeGeom, propMat);
+      blade.rotation.z = (i * Math.PI / 2);
+      propGroup.add(blade);
+    }
+    plane.add(propGroup);
+
+    // Main wings — with dihedral + slight sweep (built as two halves)
+    function makeWing(side) {
+      const g = new THREE.BoxGeometry(4.5, 0.12, 1.5);
+      // taper: not easily done with BoxGeometry; we'll fake with a separate tip mesh
+      const w = new THREE.Mesh(g, wingMat);
+      w.position.set(side * 2.6, -0.05, 0.2);
+      w.rotation.z = side * 0.06;  // dihedral ~3.5°
+      w.rotation.y = side * 0.08;  // slight sweepback
+      w.castShadow = true;
+      return w;
+    }
+    plane.add(makeWing(1));
+    plane.add(makeWing(-1));
+
+    // Wing tips (rounded)
+    function makeTip(side) {
+      const g = new THREE.CapsuleGeometry(0.06, 0.6, 4, 6);
+      g.rotateZ(Math.PI / 2);
+      const t = new THREE.Mesh(g, wingMat);
+      t.position.set(side * 4.95, -0.05 + side * 0.32, 0.2);
+      t.castShadow = true;
+      return t;
+    }
+    plane.add(makeTip(1));
+    plane.add(makeTip(-1));
+
+    // Horizontal stabilizer
+    const hstabGeom = new THREE.BoxGeometry(2.6, 0.08, 0.7);
+    const hstab = new THREE.Mesh(hstabGeom, wingMat);
+    hstab.position.set(0, 0.1, -2.4);
+    hstab.castShadow = true;
+    plane.add(hstab);
+
+    // Vertical stabilizer
+    const vstabGeom = new THREE.BoxGeometry(0.08, 1.0, 1.0);
+    const vstab = new THREE.Mesh(vstabGeom, wingMat);
+    vstab.position.set(0, 0.6, -2.5);
+    vstab.castShadow = true;
+    plane.add(vstab);
+    // Rudder accent
+    const rudGeom = new THREE.BoxGeometry(0.1, 0.85, 0.45);
+    const rudder = new THREE.Mesh(rudGeom, accentMat);
+    rudder.position.set(0, 0.62, -2.85);
+    rudder.castShadow = true;
+    plane.add(rudder);
+
+    // Canopy
+    const canopyGeom = new THREE.SphereGeometry(0.7, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+    canopyGeom.scale(0.85, 0.7, 1.4);
+    const canopy = new THREE.Mesh(canopyGeom, canopyMat);
+    canopy.position.set(0, 0.45, 0.4);
+    canopy.castShadow = true;
+    plane.add(canopy);
+
+    // Landing gear (3 wheels + struts)
+    function makeWheel(x, y, z) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.18, 16), tireMat);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(x, y, z);
+      wheel.castShadow = true;
+      return wheel;
+    }
+    function makeStrut(x, y, z) {
+      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 6), propMat);
+      s.position.set(x, y, z);
+      s.castShadow = true;
+      return s;
+    }
+    plane.add(makeStrut(1.0, -0.6, 0.3));
+    plane.add(makeStrut(-1.0, -0.6, 0.3));
+    plane.add(makeWheel(1.0, -0.95, 0.3));
+    plane.add(makeWheel(-1.0, -0.95, 0.3));
+    plane.add(makeStrut(0, -0.5, -2.3));
+    plane.add(makeWheel(0, -0.85, -2.3));
+
+    // Red stripe along fuselage
+    const stripeGeom = new THREE.BoxGeometry(1.1, 0.04, 4.2);
+    const stripe = new THREE.Mesh(stripeGeom, accentMat);
+    stripe.position.set(0, 0.15, -0.1);
+    plane.add(stripe);
+
+    plane.scale.set(1.6, 1.6, 1.6);
+    scene.add(plane);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CAMERA
+    // ─────────────────────────────────────────────────────────────────────────
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 80000);
+
+    window.addEventListener('resize', () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CLOUDS — sprite-like billboards
+    // ─────────────────────────────────────────────────────────────────────────
+    function makeCloudTexture() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 128;
+      const ctx = c.getContext('2d');
+      const g = ctx.createRadialGradient(64, 64, 5, 64, 64, 60);
+      g.addColorStop(0, 'rgba(255,255,255,0.95)');
+      g.addColorStop(0.6, 'rgba(255,255,255,0.4)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(64, 64, 60, 0, Math.PI*2); ctx.fill();
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+    const cloudTex = makeCloudTexture();
+    const cloudMat = new THREE.SpriteMaterial({ map: cloudTex, depthWrite: false, transparent: true, opacity: 0.9 });
+    for (let i = 0; i < 120; i++) {
+      const s = new THREE.Sprite(cloudMat);
+      s.position.set((Math.random() - 0.5) * 12000, 400 + Math.random() * 900, (Math.random() - 0.5) * 12000);
+      const scale = 200 + Math.random() * 380;
+      s.scale.set(scale, scale * 0.55, 1);
+      scene.add(s);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // FLIGHT PHYSICS — real-ish aerodynamic model
+    //
+    // Forces applied per frame in world space:
+    //   - Weight: -mg ĵ
+    //   - Thrust: throttle * T_max along plane forward axis
+    //   - Lift: ½ ρ v² S Cl, perpendicular to relative-wind, in wing plane
+    //   - Drag: ½ ρ v² S (Cd0 + k Cl²), opposite to velocity
+    //
+    // Control surfaces produce angular rates directly (simplified):
+    //   - Elevator → pitch rate (modulated by dynamic pressure)
+    //   - Aileron  → roll rate
+    //   - Rudder   → yaw rate
+    //   - Plus stability derivatives: roll causes adverse yaw / weathervane;
+    //     bank causes coordinated turn (gravity tilts lift vector horizontally).
+    // ─────────────────────────────────────────────────────────────────────────
+    const MASS         = 800;           // kg
+    const GRAVITY      = 9.81;          // m/s²
+    const AIR_DENSITY  = 1.225;         // kg/m³ (sea level)
+    const WING_AREA    = 16;            // m² (Cessna-ish)
+    const CL_ALPHA     = 5.5;           // lift slope per radian (typical: 2π * 0.9)
+    const CL_MAX       = 1.4;
+    const CD0          = 0.028;
+    const K_INDUCED    = 0.045;         // induced-drag factor
+    const T_MAX        = 4500;          // N at full throttle
+    const STALL_ALPHA  = 16 * Math.PI / 180;  // ~16° stall
+    const ELEV_RATE    = 1.4;           // rad/s pitch authority at design speed
+    const AIL_RATE     = 2.2;
+    const RUD_RATE     = 0.9;
+    const DESIGN_SPEED = 50;            // m/s
+    const WIND_SPEED   = 9;             // m/s sideways drift when wind is on
+    const GROUND_Y     = 1.2;           // gear height when on ground
+
+    function initState() {
+      // Start in level flight, 200m up, 300m south of runway 1, heading north
+      return {
+        pos:      new THREE.Vector3(0, 200, -2200),
+        // Quaternion: identity → nose toward +Z (north)
+        q:        new THREE.Quaternion(),
+        // Linear velocity in world space (m/s)
+        vel:      new THREE.Vector3(0, 0, 45),
+        throttle: 0.55,
+        wind:     false,
+        windDir:  Math.random() * Math.PI * 2,
+        fog:      false,
+        cockpit:  false,
+        crashed:  false,
+        touchdownLatched: false,
+        propAngle: 0,
+      };
+    }
+    let state = initState();
+
+    const keys = {};
+    let msgTimer = 0;
+    const msgEl = document.getElementById('message');
+    function flash(text, dur = 1.6) {
+      msgEl.textContent = text;
+      msgEl.classList.add('show');
+      msgTimer = dur;
+    }
+    window.addEventListener('keydown', e => {
+      if (!keys[e.key]) {
+        if (e.key === 'r' || e.key === 'R') {
+          state.wind = !state.wind;
+          if (state.wind) state.windDir = Math.random() * Math.PI * 2;
+          flash(state.wind ? 'Wind on' : 'Wind off');
+        } else if (e.key === 'f' || e.key === 'F') {
+          state.fog = !state.fog;
+          if (state.fog) {
+            scene.fog.color.set(0xc0c8d0);
+            scene.fog.near = 200;
+            scene.fog.far  = 2500;
+            renderer.toneMappingExposure = 0.85;
+          } else {
+            scene.fog.near = 60000;
+            scene.fog.far  = 100000;
+            renderer.toneMappingExposure = 1.0;
+          }
+          flash(state.fog ? 'Fog on' : 'Fog off');
+        } else if (e.key === 'c' || e.key === 'C') {
+          state.cockpit = !state.cockpit;
+          flash(state.cockpit ? 'Cockpit view' : 'Chase cam');
+        } else if (e.key === ' ') {
+          const prevCockpit = state.cockpit;
+          const prevWind = state.wind, prevFog = state.fog, prevDir = state.windDir;
+          state = initState();
+          state.cockpit = prevCockpit;
+          state.wind = prevWind; state.fog = prevFog; state.windDir = prevDir;
+          flash('Reset');
+        }
+      }
+      keys[e.key] = true;
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    }, { passive: false });
+    window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+    // Reusable vectors
+    const TMP_F = new THREE.Vector3();
+    const TMP_R = new THREE.Vector3();
+    const TMP_U = new THREE.Vector3();
+    const TMP_V = new THREE.Vector3();
+    const TMP_Q = new THREE.Quaternion();
+
+    function updatePhysics(dt) {
+      if (state.crashed) return;
+
+      // Throttle input
+      if (keys['w'] || keys['W']) state.throttle = Math.min(1.0, state.throttle + 0.5 * dt);
+      if (keys['s'] || keys['S']) state.throttle = Math.max(0.0, state.throttle - 0.5 * dt);
+
+      // Body axes from current orientation
+      TMP_F.set(0, 0, 1).applyQuaternion(state.q);  // forward (nose)
+      TMP_R.set(1, 0, 0).applyQuaternion(state.q);  // right wing
+      TMP_U.set(0, 1, 0).applyQuaternion(state.q);  // top of plane
+
+      // Relative wind = (-velocity) in body frame
+      TMP_V.copy(state.vel);
+      const airspeed = TMP_V.length();
+      const q_dyn = 0.5 * AIR_DENSITY * airspeed * airspeed;
+      const speedFactor = Math.min(1.5, airspeed / DESIGN_SPEED);
+
+      // Angle of attack: angle between body forward and velocity, in pitch plane
+      // alpha = angle between fwd vector and velocity, sign from up vector
+      let alpha = 0;
+      if (airspeed > 0.5) {
+        const v_norm = TMP_V.clone().normalize();
+        const cosA = THREE.MathUtils.clamp(v_norm.dot(TMP_F), -1, 1);
+        alpha = Math.acos(cosA);
+        // Sign of alpha based on whether velocity is below the plane's nose
+        if (v_norm.dot(TMP_U) > 0) alpha = -alpha;
+      }
+      // Cl curve: linear to stall, then drops sharply
+      let cl;
+      const absA = Math.abs(alpha);
+      if (absA < STALL_ALPHA) {
+        cl = CL_ALPHA * alpha;
+        if (Math.abs(cl) > CL_MAX) cl = Math.sign(cl) * CL_MAX;
+      } else {
+        // Post-stall: lift drops
+        const excess = absA - STALL_ALPHA;
+        cl = Math.sign(alpha) * Math.max(0, CL_MAX - 6 * excess);
+      }
+      const liftMag = q_dyn * WING_AREA * cl;
+      const dragMag = q_dyn * WING_AREA * (CD0 + K_INDUCED * cl * cl);
+
+      // ── Force accumulator ──
+      const force = new THREE.Vector3(0, -MASS * GRAVITY, 0);
+
+      // Thrust along forward
+      force.addScaledVector(TMP_F, state.throttle * T_MAX);
+
+      // Lift: perpendicular to velocity, in the plane spanned by fwd × right (i.e., body up)
+      // Approximated: lift acts along the body's local up vector projected to be perpendicular to velocity.
+      if (airspeed > 0.5) {
+        const v_norm = TMP_V.clone().normalize();
+        // Lift direction = (body_up - (body_up · v) * v), normalized
+        const dotVU = TMP_U.dot(v_norm);
+        const liftDir = TMP_U.clone().addScaledVector(v_norm, -dotVU).normalize();
+        force.addScaledVector(liftDir, liftMag);
+        // Drag: opposite to velocity
+        force.addScaledVector(v_norm, -dragMag);
+      }
+
+      // Integrate linear motion
+      const accel = force.divideScalar(MASS);
+      state.vel.addScaledVector(accel, dt);
+      // Cap velocity to avoid runaway
+      const maxV = 280;
+      if (state.vel.length() > maxV) state.vel.setLength(maxV);
+
+      state.pos.addScaledVector(state.vel, dt);
+
+      // Wind drift
+      if (state.wind) {
+        state.pos.x += Math.cos(state.windDir) * WIND_SPEED * dt;
+        state.pos.z += Math.sin(state.windDir) * WIND_SPEED * dt;
+      }
+
+      // ── Control inputs → angular rates (in body frame) ──
+      // Authority scales with dynamic pressure (slower = less responsive)
+      const auth = Math.max(0.3, Math.min(1.2, speedFactor));
+
+      let pitchRate = 0, rollRate = 0, yawRate = 0;
+
+      // Pitch: UP arrow descends, DOWN ascends (operator's flight-sim convention)
+      // ArrowUp = elevator down = nose down
+      if (keys['ArrowUp'])   pitchRate -= ELEV_RATE * auth;
+      if (keys['ArrowDown']) pitchRate += ELEV_RATE * auth;
+
+      // Horizontal: per operator flip in v6 — LEFT = roll/yaw right, RIGHT = roll/yaw left
+      if (keys['ArrowLeft']) {
+        rollRate -= AIL_RATE * auth;
+        yawRate  -= RUD_RATE * 0.5 * auth;
+      }
+      if (keys['ArrowRight']) {
+        rollRate += AIL_RATE * auth;
+        yawRate  += RUD_RATE * 0.5 * auth;
+      }
+
+      // Pure rudder Q/E (also flipped to match)
+      if (keys['q'] || keys['Q']) yawRate -= RUD_RATE * auth;
+      if (keys['e'] || keys['E']) yawRate += RUD_RATE * auth;
+
+      // Coordinated turn: bank angle adds yaw (gravity tilts lift sideways)
+      const bankAngle = Math.atan2(TMP_R.y, TMP_U.y);
+      yawRate -= Math.sin(bankAngle) * (GRAVITY / Math.max(airspeed, 25)) * 0.6;
+
+      // Weathervane stability: yaw tries to align nose with velocity
+      if (airspeed > 5) {
+        const v_norm = TMP_V.clone().normalize();
+        const sideslip = TMP_R.dot(v_norm);  // positive = slipping to right
+        yawRate -= sideslip * 1.2;
+      }
+
+      // Pitch stability: tends to return alpha to ~2° (cruise trim)
+      const trimAlpha = 2 * Math.PI / 180;
+      pitchRate += (trimAlpha - alpha) * 0.4;
+
+      // Apply rotations in body frame (intrinsic): roll, then pitch, then yaw
+      TMP_Q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), rollRate * dt);
+      state.q.multiply(TMP_Q);
+      TMP_Q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitchRate * dt);
+      state.q.multiply(TMP_Q);
+      TMP_Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawRate * dt);
+      state.q.multiply(TMP_Q);
+      state.q.normalize();
+
+      // Propeller spin
+      state.propAngle += (state.throttle * 25 + 5) * dt;
+
+      // ── Ground contact ──
+      if (state.pos.y < GROUND_Y) {
+        const onR1 = Math.abs(state.pos.x) < 35 && Math.abs(state.pos.z) < 600;
+        const dx = state.pos.x - RUNWAY2.x;
+        const dz = state.pos.z - RUNWAY2.z;
+        const ca = Math.cos(RUNWAY2.rot), sa = Math.sin(RUNWAY2.rot);
+        const lx =  ca * dx + sa * dz;
+        const lz = -sa * dx + ca * dz;
+        const onR2 = Math.abs(lx) < 35 && Math.abs(lz) < 600;
+        const onRunway = onR1 || onR2;
+
+        const vy = state.vel.y;
+        const wingsLevel = TMP_U.y > 0.85;
+        const softVertical = vy > -8;
+        const slowEnough  = airspeed < 70;
+
+        if (onRunway && softVertical && wingsLevel && slowEnough) {
+          state.pos.y = GROUND_Y;
+          state.vel.y = 0;
+          // Bleed off horizontal speed on ground
+          state.vel.multiplyScalar(0.96);
+          if (!state.touchdownLatched) { flash('Touchdown! 🛬'); state.touchdownLatched = true; }
+        } else {
+          state.crashed = true;
+          state.pos.y = GROUND_Y;
+          const reason =
+            !onRunway   ? 'off-runway impact' :
+            !softVertical ? 'descent too steep' :
+            !wingsLevel ? 'wings not level' :
+            !slowEnough ? 'too fast for ground' : 'impact';
+          flash('💥 Crashed — ' + reason + '\nPress Space to reset', 6);
+        }
+      } else {
+        state.touchdownLatched = false;
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // RENDER + CAMERA
+    // ─────────────────────────────────────────────────────────────────────────
+    function updateCamera() {
+      plane.position.copy(state.pos);
+      plane.quaternion.copy(state.q);
+      propGroup.rotation.z = state.propAngle;
+
+      const camOffset = new THREE.Vector3();
+      const lookOffset = new THREE.Vector3();
+      const upVec = new THREE.Vector3(0, 1, 0);
+
+      if (state.cockpit) {
+        camOffset.set(0, 1.0, 1.0).applyQuaternion(state.q);
+        lookOffset.set(0, 0.4, 50).applyQuaternion(state.q);
+        upVec.set(0, 1, 0).applyQuaternion(state.q);
+      } else {
+        camOffset.set(0, 5, -16).applyQuaternion(state.q);
+        lookOffset.set(0, 0, 3).applyQuaternion(state.q);
+        // Slight banking of the camera matches plane up to make turns feel natural
+        const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(state.q);
+        upVec.copy(planeUp).lerp(new THREE.Vector3(0, 1, 0), 0.6).normalize();
+      }
+
+      camera.position.copy(state.pos).add(camOffset);
+      camera.up.copy(upVec);
+      camera.lookAt(state.pos.x + lookOffset.x, state.pos.y + lookOffset.y, state.pos.z + lookOffset.z);
+
+      // Hide plane in cockpit view to avoid clipping
+      plane.visible = !state.cockpit;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // HUD
+    // ─────────────────────────────────────────────────────────────────────────
+    const altEl = document.getElementById('alt');
+    const spdEl = document.getElementById('spd');
+    const hdgEl = document.getElementById('hdg');
+    const thrEl = document.getElementById('thr');
+    const aoaEl = document.getElementById('aoa');
+    const gEl   = document.getElementById('gforce');
+    const windStateEl = document.getElementById('windState');
+    const windDetailEl = document.getElementById('windDetail');
+    const fogStateEl   = document.getElementById('fogState');
+    const viewModeEl   = document.getElementById('viewMode');
+    const runwayDistEl = document.getElementById('runwayDist');
+    const attInner     = document.getElementById('attitudeInner');
+
+    function compass(deg) {
+      const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+      return dirs[Math.round(deg / 45) % 8];
+    }
+
+    function updateHUD(dt) {
+      altEl.textContent = Math.max(0, Math.round(state.pos.y));
+      const airspeed = state.vel.length();
+      spdEl.textContent = Math.round(airspeed);
+
+      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(state.q);
+      const hdg = ((Math.atan2(fwd.x, fwd.z) * 180 / Math.PI) + 360) % 360;
+      hdgEl.textContent = String(Math.round(hdg)).padStart(3, '0');
+      thrEl.textContent = Math.round(state.throttle * 100);
+
+      // AoA estimate
+      const v_norm = state.vel.clone().normalize();
+      const alphaDeg = Math.round(Math.acos(THREE.MathUtils.clamp(v_norm.dot(fwd), -1, 1)) * 180 / Math.PI);
+      aoaEl.textContent = airspeed > 0.5 ? alphaDeg : 0;
+
+      // G estimate (lift / weight)
+      const gforce = Math.max(0, state.vel.y > -50 ? 1 + Math.abs(fwd.y) : 1);  // rough
+      gEl.textContent = gforce.toFixed(1);
+
+      if (state.wind) {
+        windStateEl.textContent = 'ON';
+        windStateEl.className = 'on';
+        const wd = ((state.windDir * 180 / Math.PI) + 360) % 360;
+        windDetailEl.textContent = '(' + compass(wd) + ')';
+      } else {
+        windStateEl.textContent = 'OFF';
+        windStateEl.className = 'off';
+        windDetailEl.textContent = '';
+      }
+      fogStateEl.textContent = state.fog ? 'ON' : 'OFF';
+      fogStateEl.className   = state.fog ? 'on' : 'off';
+      viewModeEl.textContent = state.cockpit ? 'cockpit' : 'chase';
+
+      const d1 = Math.hypot(state.pos.x - RUNWAY1.x, state.pos.z - RUNWAY1.z);
+      const d2 = Math.hypot(state.pos.x - RUNWAY2.x, state.pos.z - RUNWAY2.z);
+      const nearest = Math.min(d1, d2);
+      runwayDistEl.textContent = (nearest / 1000).toFixed(1) + ' km (#' + (d1 < d2 ? '1' : '2') + ')';
+
+      // Attitude indicator (artificial horizon)
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(state.q);
+      const rollAngle = Math.atan2(right.y, new THREE.Vector3(0,1,0).applyQuaternion(state.q).y) * 180 / Math.PI;
+      const pitchAngle = Math.asin(fwd.y) * 180 / Math.PI;
+      attInner.style.transform = `rotate(${rollAngle}deg) translateY(${pitchAngle * 1.5}px)`;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // MAIN LOOP
+    // ─────────────────────────────────────────────────────────────────────────
+    let prev = 0;
+    function frame(ts) {
+      const dt = prev ? Math.min((ts - prev) / 1000, 0.05) : 0.016;
+      prev = ts;
+      updatePhysics(dt);
+      updateCamera();
+      updateHUD(dt);
+      if (msgTimer > 0) { msgTimer -= dt; if (msgTimer <= 0) msgEl.classList.remove('show'); }
+      renderer.render(scene, camera);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
   </script>
 </body>
 </html>
