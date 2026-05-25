@@ -88,7 +88,7 @@
     <div style="margin-top:6px;"><kbd>C</kbd> View &nbsp; <kbd>R</kbd> Wind &nbsp; <kbd>F</kbd> Fog &nbsp; <kbd>Space</kbd> Reset</div>
   </div>
   <div id="message"></div>
-  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a> &middot; <span style="opacity:0.7;font-family:monospace;">v5</span></footer>
+  <footer>Built by Fleet &middot; <a href="https://hire.autonomous-fleet.workers.dev">Alpha access</a> &middot; <span style="opacity:0.7;font-family:monospace;">v6</span></footer>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
   <script>
@@ -399,19 +399,20 @@ function update(dt) {
   if (keys['ArrowUp'])   quat.rotateX(state.q, state.q,  PITCH_RATE * dt);
   if (keys['ArrowDown']) quat.rotateX(state.q, state.q, -PITCH_RATE * dt);
 
-  // Coordinated turn (arrow Left/Right = roll + yaw together)
+  // Coordinated turn (arrow Left/Right = roll + yaw together).
+  // Signs flipped from prior math reasoning per operator's direct test (v6).
   if (keys['ArrowLeft']) {
-    quat.rotateZ(state.q, state.q,  ROLL_RATE * dt);
-    quat.rotateY(state.q, state.q, -YAW_RATE * 0.9 * dt);  // turn left
+    quat.rotateZ(state.q, state.q, -ROLL_RATE * dt);
+    quat.rotateY(state.q, state.q,  YAW_RATE * 0.9 * dt);
   }
   if (keys['ArrowRight']) {
-    quat.rotateZ(state.q, state.q, -ROLL_RATE * dt);
-    quat.rotateY(state.q, state.q,  YAW_RATE * 0.9 * dt);  // turn right
+    quat.rotateZ(state.q, state.q,  ROLL_RATE * dt);
+    quat.rotateY(state.q, state.q, -YAW_RATE * 0.9 * dt);
   }
 
-  // Pure rudder (Q/E)
-  if (keys['q'] || keys['Q']) quat.rotateY(state.q, state.q, -YAW_RATE * dt);
-  if (keys['e'] || keys['E']) quat.rotateY(state.q, state.q,  YAW_RATE * dt);
+  // Pure rudder (Q/E) — flipped to match
+  if (keys['q'] || keys['Q']) quat.rotateY(state.q, state.q,  YAW_RATE * dt);
+  if (keys['e'] || keys['E']) quat.rotateY(state.q, state.q, -YAW_RATE * dt);
 
   quat.normalize(state.q, state.q);
 
